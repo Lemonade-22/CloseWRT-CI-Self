@@ -188,13 +188,6 @@ jobs:
           $GITHUB_WORKSPACE/Scripts/Packages.sh
           $GITHUB_WORKSPACE/Scripts/Handles.sh
 
-      - name: Exclude QModem for N60 Pro
-        if: ${{ inputs.WRT_CONFIG == 'N60-Pro-512M' }}
-        run: |
-          cd ./wrt/package/
-          # Exclude QModem's applications, translations and bundled drivers.
-          rm -rf -- ./QModem ./luci-app-qmodem-generic
-
       - name: Custom Settings
         run: |
           cd ./wrt/
@@ -207,16 +200,8 @@ jobs:
 
           $GITHUB_WORKSPACE/Scripts/Settings.sh
 
-          if [[ "$WRT_CONFIG" == "N60-Pro-512M" ]]; then
-            # Drop common/private/manual QModem selections before resolving dependencies.
-            sed -i -E '/^(# )?CONFIG_PACKAGE_[^= ]*[Qq][Mm][Oo][Dd][Ee][Mm][^= ]*(=| )/d' .config
-          fi
           make defconfig -j$(nproc)
           if [[ "$WRT_CONFIG" == "N60-Pro-512M" ]]; then
-            if grep -Ei '^CONFIG_PACKAGE_[^=]*qmodem[^=]*=(y|m)$' .config; then
-              echo "::error::QModem must remain disabled for N60 Pro"
-              exit 1
-            fi
             grep -qx 'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_netcore_n60-pro=y' .config
             grep -qx 'CONFIG_PACKAGE_kmod-mt_wifi=y' .config
             grep -qx 'CONFIG_PACKAGE_kmod-mediatek_hnat=y' .config
