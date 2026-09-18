@@ -137,6 +137,17 @@ jobs:
             sed -i '/.cn\//d; /tencent/d; /aliyun/d' "$PROJECT_MIRRORS_FILE"
           fi
 
+      - name: Apply N60 Pro 512M adaptation
+        if: ${{ inputs.WRT_CONFIG == 'N60-Pro-512M' }}
+        run: |
+          set -euo pipefail
+          cd ./wrt/
+          PATCH="$GITHUB_WORKSPACE/patches/n60pro-512m-cwrt.patch"
+          git apply --check "$PATCH"
+          git apply "$PATCH"
+          git diff --check
+          git diff --stat
+
       - name: Check Scripts
         run: |
           find ./ -maxdepth 3 -type f -iregex ".*\(txt\|sh\)$" -exec dos2unix {} \; -exec chmod +x {} \;
@@ -189,7 +200,13 @@ jobs:
 
           $GITHUB_WORKSPACE/Scripts/Settings.sh
 
-          make defconfig -j$(nproc) && make clean -j$(nproc)
+          make defconfig -j$(nproc)
+          if [[ "$WRT_CONFIG" == "N60-Pro-512M" ]]; then
+            grep -qx 'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_netcore_n60-pro=y' .config
+            grep -qx 'CONFIG_PACKAGE_kmod-mt_wifi=y' .config
+            grep -qx 'CONFIG_PACKAGE_kmod-mediatek_hnat=y' .config
+          fi
+          make clean -j$(nproc)
 
       - name: Download Packages
         if: ${{ !inputs.WRT_TEST }}

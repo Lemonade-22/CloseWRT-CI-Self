@@ -1,0 +1,42 @@
+--- a/target/linux/mediatek/dts/mt7986a-netcore-n60-pro.dts
++++ b/target/linux/mediatek/dts/mt7986a-netcore-n60-pro.dts
+@@ -8,7 +8,7 @@
+ #include "mt7986a.dtsi"
+ 
+ / {
+-	model = "Netcore N60 Pro";
++	model = "Netcore N60 Pro 512M";
+ 	compatible = "netcore,n60-pro", "mediatek,mt7986a";
+ 
+ 	aliases {
+@@ -295,7 +295,8 @@
+ 
+ 			partition@580000 {
+ 				label = "ubi";
+-				reg = <0x0580000 0x7280000>;
++				/* 512MiB NAND: retain 8MiB (64 x 128KiB) for NMBM. */
++				reg = <0x0580000 0x1f280000>;
+ 			};
+ 		};
+ 	};
+--- a/target/linux/mediatek/image/filogic.mk
++++ b/target/linux/mediatek/image/filogic.mk
+@@ -1766,11 +1766,16 @@
+ 
+ define Device/netcore_n60-pro
+   DEVICE_VENDOR := Netcore
+-  DEVICE_MODEL := N60 Pro
++  DEVICE_MODEL := N60 Pro 512M
+   DEVICE_DTS := mt7986a-netcore-n60-pro
+   DEVICE_DTS_DIR := ../dts
+   BLOCKSIZE := 128k
+   PAGESIZE := 2048
++  IMAGE_SIZE := 510464k
++  UBINIZE_OPTS := -E 5
++  KERNEL_IN_UBI := 1
++  IMAGES += factory.ubi
++  IMAGE/factory.ubi := append-ubi | check-size $$$$(IMAGE_SIZE)
+   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+   DEVICE_PACKAGES := kmod-mt7915e kmod-mt7986-firmware mt7986-wo-firmware kmod-usb3 automount kmod-usb-ledtrig-usbport
+ endef
+
