@@ -208,6 +208,36 @@ jobs:
           fi
           make clean -j$(nproc)
 
+      - name: Enable N60 Pro eBPF dependencies
+        if: ${{ inputs.WRT_CONFIG == 'N60-Pro-512M' }}
+        run: |
+          set -euo pipefail
+          cd ./wrt/
+          enabled=(KERNEL_DEBUG_INFO KERNEL_DEBUG_INFO_BTF KERNEL_CGROUPS KERNEL_CGROUP_BPF KERNEL_KPROBES KERNEL_KPROBE_EVENTS KERNEL_BPF_EVENTS KERNEL_BPF_STREAM_PARSER KERNEL_XDP_SOCKETS PACKAGE_kmod-sched-core PACKAGE_kmod-sched-bpf PACKAGE_kmod-veth PACKAGE_kmod-xdp-sockets-diag PACKAGE_ca-bundle PACKAGE_curl PACKAGE_ip-full)
+          disabled=(KERNEL_DEBUG_INFO_REDUCED PACKAGE_ip-tiny PACKAGE_dae PACKAGE_daed PACKAGE_luci-app-daede PACKAGE_luci-app-daede_daed PACKAGE_luci-app-daed PACKAGE_vmlinux-btf)
+          for symbol in "${enabled[@]}" "${disabled[@]}"; do
+            sed -i -E "/^(# )?CONFIG_${symbol}(=| )/d" .config
+          done
+          for symbol in "${enabled[@]}"; do
+            echo "CONFIG_${symbol}=y" >> .config
+          done
+          for symbol in "${disabled[@]}"; do
+            echo "# CONFIG_${symbol} is not set" >> .config
+          done
+          make defconfig
+          for symbol in "${enabled[@]}"; do
+            grep -qx "CONFIG_${symbol}=y" .config || {
+              echo "::error::Missing required eBPF dependency: $symbol"
+              exit 1
+            }
+          done
+          for symbol in "${disabled[@]}"; do
+            if grep -Eq "^CONFIG_${symbol}=(y|m)$" .config; then
+              echo "::error::Unexpected enabled option: $symbol"
+              exit 1
+            fi
+          done
+
       - name: Download Packages
         if: ${{ !inputs.WRT_TEST }}
         run: |
