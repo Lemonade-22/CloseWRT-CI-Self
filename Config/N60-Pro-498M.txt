@@ -1,5 +1,5 @@
-# N60 Pro 512MiB NAND, 128KiB erase blocks / 2KiB pages
-# UBI: 498.5MiB; tail: 8MiB reserved for NMBM.
+# N60 Pro 498MiB NAND, 128KiB erase blocks / 2KiB pages
+# UBI: 498,5MB（498.5MiB）; tail: 8MiB reserved for NMBM.
 #设备平台
 CONFIG_TARGET_mediatek=y
 CONFIG_TARGET_mediatek_filogic=y

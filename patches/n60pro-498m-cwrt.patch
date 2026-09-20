@@ -5,7 +5,7 @@
  
  / {
 -	model = "Netcore N60 Pro";
-+	model = "Netcore N60 Pro 512M";
++	model = "Netcore N60 Pro 498M";
  	compatible = "netcore,n60-pro", "mediatek,mt7986a";
  
  	aliases {
@@ -14,7 +14,7 @@
  			partition@580000 {
  				label = "ubi";
 -				reg = <0x0580000 0x7280000>;
-+				/* 512MiB NAND: retain 8MiB (64 x 128KiB) for NMBM. */
++				/* 512MiB NAND: UBI 498,5MB (498.5MiB); retain 8MiB for NMBM. */
 +				reg = <0x0580000 0x1f280000>;
  			};
  		};
@@ -26,7 +26,7 @@
  define Device/netcore_n60-pro
    DEVICE_VENDOR := Netcore
 -  DEVICE_MODEL := N60 Pro
-+  DEVICE_MODEL := N60 Pro 512M
++  DEVICE_MODEL := N60 Pro 498M
    DEVICE_DTS := mt7986a-netcore-n60-pro
    DEVICE_DTS_DIR := ../dts
    BLOCKSIZE := 128k

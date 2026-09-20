@@ -137,12 +137,12 @@ jobs:
             sed -i '/.cn\//d; /tencent/d; /aliyun/d' "$PROJECT_MIRRORS_FILE"
           fi
 
-      - name: Apply N60 Pro 512M adaptation
-        if: ${{ inputs.WRT_CONFIG == 'N60-Pro-512M' }}
+      - name: Apply N60 Pro 498M adaptation
+        if: ${{ inputs.WRT_CONFIG == 'N60-Pro-498M' }}
         run: |
           set -euo pipefail
           cd ./wrt/
-          PATCH="$GITHUB_WORKSPACE/patches/n60pro-512m-cwrt.patch"
+          PATCH="$GITHUB_WORKSPACE/patches/n60pro-498m-cwrt.patch"
           git apply --check "$PATCH"
           git apply "$PATCH"
           git diff --check
@@ -201,7 +201,7 @@ jobs:
           $GITHUB_WORKSPACE/Scripts/Settings.sh
 
           make defconfig -j$(nproc)
-          if [[ "$WRT_CONFIG" == "N60-Pro-512M" ]]; then
+          if [[ "$WRT_CONFIG" == "N60-Pro-498M" ]]; then
             grep -qx 'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_netcore_n60-pro=y' .config
             grep -qx 'CONFIG_PACKAGE_kmod-mt_wifi=y' .config
             grep -qx 'CONFIG_PACKAGE_kmod-mediatek_hnat=y' .config
@@ -209,7 +209,7 @@ jobs:
           make clean -j$(nproc)
 
       - name: Enable N60 Pro eBPF dependencies
-        if: ${{ inputs.WRT_CONFIG == 'N60-Pro-512M' }}
+        if: ${{ inputs.WRT_CONFIG == 'N60-Pro-498M' }}
         run: |
           set -euo pipefail
           cd ./wrt/
@@ -314,6 +314,7 @@ jobs:
             分支：${{env.WRT_BRANCH}}
             提交：${{env.WRT_HASH}}
 
+            ${{ inputs.WRT_CONFIG == 'N60-Pro-498M' && 'N60 Pro UBI：498,5MB（498.5MiB）；512MiB NAND，末尾预留 8MiB 给 NMBM。' || '' }}
             配置：${{env.WRT_CONFIG}}
             平台：${{env.WRT_TARGET}}
 
