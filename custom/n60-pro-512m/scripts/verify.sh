@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
-# N60 Pro 512M：defconfig 之后校验设备、分区补丁、daede 前置。
+# N60 Pro 512M：defconfig 之后校验设备、NMBM/分区补丁、daede 前置。
 set -euo pipefail
 FAIL=0
 check() {
@@ -12,13 +12,19 @@ check '^CONFIG_KERNEL_BPF_EVENTS=y$' 'daede 前置：BPF events'
 check '^CONFIG_KERNEL_KPROBES=y$' 'daede 前置：kprobes'
 check '^CONFIG_TARGET_ROOTFS_SQUASHFS=y$' 'squashfs 根'
 
-# 分区补丁是否真的打上了
+# 补丁是否真的打上了：NMBM 必须 256（否则 NMBM 找不到签名，刷完不开机）
 DTS='target/linux/mediatek/dts/mt7986a-netcore-n60-pro.dts'
 if [ -f "$DTS" ]; then
-  if grep -q 'reg = <0x0580000 0x1fa80000>;' "$DTS"; then
-    echo '  ok   ubi 已扩到 0x1fa80000（约 506.5 MiB）'
+  if grep -q 'mediatek,bmt-max-reserved-blocks = <256>;' "$DTS"; then
+    echo '  ok   NMBM reserved-blocks = 256'
   else
-    echo '::error::ubi 分区未扩展，刷机后只能用 122.5 MiB'
+    echo '::error::NMBM reserved-blocks 不是 256，刷机可能不开机（见 OpenWrt PR #24001）'
+    FAIL=1
+  fi
+  if grep -q 'reg = <0x0580000 0x0>;' "$DTS"; then
+    echo '  ok   ubi 用满剩余空间（size = 0x0）'
+  else
+    echo '::error::ubi 未改成 0x0，512 MB 空间用不上'
     FAIL=1
   fi
 fi

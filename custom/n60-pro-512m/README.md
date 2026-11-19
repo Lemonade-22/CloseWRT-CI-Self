@@ -26,18 +26,29 @@ package/mtk/applications/mtwifi-cfg/  配置工具
 而 `Yuzhii0718@openwrt-24.10-6.6` 里 `package/kernel/mt76` 也不存在，
 **所以这套源码是纯闭源，没有开源 mt76 可选**——上游那两档 WIFI-YES/NO 在这里没有对应开关。
 
-## 512M 分区必须扩
+## 512M 必须改两处（改错会砖）
 
-上游设备树把 ubi 限在 `0x7280000`（120 MB），可这颗芯片有 512 MB NAND。
-`patches/n60pro-512m-ubi-5065m.patch` 把它改成 `0x1fa80000`（约 506.5 MiB），
-不打这个补丁，sysupgrade 只能写进 120 MB。
-
-补丁编号：
+上游设备树是按小容量 NAND 写的，放到 512 MB 上要改**两处**，`patches/n60pro-512m-ubi-5065m.patch` 一起处理：
 
 ```
-- reg = <0x0580000 0x7280000>;
-+ reg = <0x0580000 0x1fa80000>;
+# 1) NMBM 保留块数：64 → 256（必须与原厂一致）
+-        mediatek,bmt-max-reserved-blocks = <64>;
++        mediatek,bmt-max-reserved-blocks = <256>;
+
+# 2) ubi 长度写 0x0，表示「用满剩余」(由 NMBM 自己算边界)
+-               reg = <0x0580000 0x7280000>;
++               reg = <0x0580000 0x0>;
 ```
+
+**第二条为什么写 512 MiB 而不是硬编码长度**：OpenWrt 的 fixed-partitions 里 `size = <0x0>`
+表示从起始地址一直到芯片末尾，边界交给 NMBM。硬编码 `0x1fa80000`（= 0x20000000 - 0x580000）虽然数值上等于
+512 MiB，但顶到芯片最后一块，没给 NMBM 的 BMT 留空间，而 NMBM 的元数据是要占位的。
+
+参考实现：Keenetic KN-3811（同为 512 MB NAND）用的就是 `bmt-max-reserved-blocks = <256>` +
+`reg = <0x600000 0x0>`。
+
+**第一条为什么必须改**：见 OpenWrt PR #24001 —— 设备树设 64 而原厂固件用 256，
+NMBM 会在某些板子上找不到自己的签名，**刷完不开机**。这条不是优化，是启动前提。
 
 ## daede 支持（软件层同 OWRT）
 
