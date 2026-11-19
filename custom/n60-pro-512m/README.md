@@ -35,17 +35,35 @@ package/mtk/applications/mtwifi-cfg/  配置工具
 -        mediatek,bmt-max-reserved-blocks = <64>;
 +        mediatek,bmt-max-reserved-blocks = <256>;
 
-# 2) ubi 长度写 0x0，表示「用满剩余」(由 NMBM 自己算边界)
+# 2) ubi 长度：120 MiB → 0x1DA80000（尾部留 32 MiB 给 NMBM）
 -               reg = <0x0580000 0x7280000>;
-+               reg = <0x0580000 0x0>;
++               reg = <0x0580000 0x1DA80000>;
 ```
 
-**第二条为什么写 512 MiB 而不是硬编码长度**：OpenWrt 的 fixed-partitions 里 `size = <0x0>`
-表示从起始地址一直到芯片末尾，边界交给 NMBM。硬编码 `0x1fa80000`（= 0x20000000 - 0x580000）虽然数值上等于
-512 MiB，但顶到芯片最后一块，没给 NMBM 的 BMT 留空间，而 NMBM 的元数据是要占位的。
+### ubi 长度是怎么算的
 
-参考实现：Keenetic KN-3811（同为 512 MB NAND）用的就是 `bmt-max-reserved-blocks = <256>` +
-`reg = <0x600000 0x0>`。
+```
+芯片 512 MiB                0x20000000
+ubi 起点                    0x580000
+NMBM 预留 256×128 KiB       0x2000000  (32 MiB)
+                                        ↓
+ubi = 0x20000000 - 0x580000 - 0x2000000 = 0x1DA80000
+校验：0x1DA80000 + 0x580000 = 0x1E000000，尾部正好剩 0x2000000 ✓
+```
+
+**为什么不能写 `size = <0x0>`（用满剩余）**：那是 Keenetic KN-3811 的写法，但它的树用的是
+`compatible = "linux,ubi"` 新绑定，尾部边界由内核自己算。这棵树**没有**该绑定，写 `0x0`
+会把 NMBM 的 BMT 表一起吃掉——BMT 放不下，NMBM 找不到签名，和 `reserved-blocks = <64>` 是同一种死法。
+
+三条基线的 ubi 长度差，正好是 NMBM 预留量：
+
+| 来源 | ubi 长度 | `linux,ubi` 绑定 |
+|---|---|---|
+| 主线 openwrt main | `0x7a80000`（122.5 MiB） | 有 |
+| 6.6 padavanonly（本仓用） | `0x7280000`（114.5 MiB） | 无 |
+| OWRT 的 patch | `0x1fa80000`（506.5 MiB） | 有 |
+
+主线减 6.6 = `0x800000` = 8 MiB = 64 块 × 128 KiB，正是 `reserved-blocks = <64>` 的预留量。
 
 **第一条为什么必须改**：见 OpenWrt PR #24001 —— 设备树设 64 而原厂固件用 256，
 NMBM 会在某些板子上找不到自己的签名，**刷完不开机**。这条不是优化，是启动前提。

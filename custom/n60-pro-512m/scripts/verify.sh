@@ -21,10 +21,10 @@ if [ -f "$DTS" ]; then
     echo '::error::NMBM reserved-blocks 不是 256，刷机可能不开机（见 OpenWrt PR #24001）'
     FAIL=1
   fi
-  if grep -q 'reg = <0x0580000 0x0>;' "$DTS"; then
-    echo '  ok   ubi 用满剩余空间（size = 0x0）'
+  if grep -q 'reg = <0x0580000 0x1DA80000>;' "$DTS"; then
+    echo '  ok   ubi 扩到 0x1DA80000（约 474 MiB，尾部留 32 MiB 给 NMBM）'
   else
-    echo '::error::ubi 未改成 0x0，512 MB 空间用不上'
+    echo '::error::ubi 长度不对，应为 0x1DA80000（512MiB - 5.5MiB 起点 - 32MiB NMBM）'
     FAIL=1
   fi
 fi
