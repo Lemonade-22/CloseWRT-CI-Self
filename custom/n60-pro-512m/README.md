@@ -28,14 +28,14 @@ package/mtk/applications/mtwifi-cfg/  配置工具
 
 ## 512M 分区必须扩
 
-上游设备树把 ubi 限在 `0x7a80000`（122.5 MiB），可这颗芯片有 512 MB NAND。
+上游设备树把 ubi 限在 `0x7280000`（120 MB），可这颗芯片有 512 MB NAND。
 `patches/n60pro-512m-ubi-5065m.patch` 把它改成 `0x1fa80000`（约 506.5 MiB），
-不打这个补丁，sysupgrade 只能写进 122.5 MiB。
+不打这个补丁，sysupgrade 只能写进 120 MB。
 
 补丁编号：
 
 ```
-- reg = <0x0580000 0x7a80000>;
+- reg = <0x0580000 0x7280000>;
 + reg = <0x0580000 0x1fa80000>;
 ```
 
