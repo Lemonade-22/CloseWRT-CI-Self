@@ -6,6 +6,42 @@
 
 OpenWrt / ImmortalWrt 固件自动构建。**自维护机型**（上游不支持或需要改板级代码的）放 `custom/`，其它走 `Config/`。
 
+## 上游文件与自用文件的边界
+
+本仓是 `VIKINGYFY/CloseWRT-CI` 的衍生。`sync-upstream.yml` 每小时拉上游 `main` 合并到本地 `main`。
+
+### 自用文件（OUR_FILES，同步时保持本地版本）
+
+```
+.github/workflows/WRT-CORE-SELF.yml
+.github/workflows/TR3000_hanwckf.yml
+.github/workflows/Delete-All-Workflow-Runs.yml
+.github/workflows/sync-upstream.yml
+.github/workflows/Auto-Clean-Self.yml
+Scripts/Clean-Releases.cjs
+Scripts/Delete-Workflow-Runs.cjs
+```
+
+外加整个 `custom/` 目录与 `AI_README.md`。
+
+### 硬规则：其余文件一律不改
+
+**`WRT-CORE.yml`、`CWRT-ALL.yml`、`WRT-TEST.yml`、`Config/`、`Scripts/Packages.sh`、`Scripts/Settings.sh`、`README.md`、`LICENSE` 等都属于上游文件。**
+
+不要改它们。原因有三：
+
+1. 下次 sync 会被上游版本直接覆盖，改动悄悄消失；
+2. 就算不覆盖，也会在合并时产生冲突，拖住整个同步；
+3. 上游行为一变，本地补丁就变成没人记得的隐性分叉。
+
+### 需要改行为时，往这三个地方走
+
+| 需求 | 放哪 |
+|---|---|
+| 只是某个机型要不同 | `custom/<机型>/scripts/` + `Scripts/Device.sh` 的 case 分支 |
+| 要改构建流程本身 | `WRT-CORE-SELF.yml`（自用文件） |
+| 确实是通用改进 | 提给上游，别在本地改 |
+
 ## 三种 workflow 的分工
 
 ```
