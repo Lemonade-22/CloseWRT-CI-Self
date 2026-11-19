@@ -8,8 +8,12 @@ check() {
 }
 check '^CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_netcore_n60-pro=y$' '设备 netcore_n60-pro 已选中'
 check '^CONFIG_PACKAGE_kmod-mt_wifi=y$' '闭源 wifi 驱动'
-check '^CONFIG_KERNEL_BPF_EVENTS=y$' 'daede 前置：BPF events'
-check '^CONFIG_KERNEL_KPROBES=y$' 'daede 前置：kprobes'
+check '^CONFIG_PACKAGE_honk=y$' 'honk 本体'
+check '^CONFIG_PACKAGE_luci-app-honk=y$' 'honk LuCI 面板'
+check '^CONFIG_KERNEL_DEBUG_INFO_BTF=y$' 'honk 必需：内核 BTF'
+check '^CONFIG_KERNEL_CGROUP_BPF=y$' 'honk 必需：cgroup BPF'
+check '^CONFIG_KERNEL_BPF_SYSCALL=y$' 'honk 必需：BPF syscall'
+check '^CONFIG_PACKAGE_kmod-nft-queue=y$' 'honk 依赖：kmod-nft-queue'
 check '^CONFIG_TARGET_ROOTFS_SQUASHFS=y$' 'squashfs 根'
 
 # 补丁是否真的打上了：NMBM 必须 256（否则 NMBM 找不到签名，刷完不开机）

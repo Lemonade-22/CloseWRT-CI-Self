@@ -9,10 +9,10 @@ set -euo pipefail
 CI_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 DEVICE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# daede 的内核前提
-if [ -f "$DEVICE_DIR/Config/DAEDE.txt" ]; then
-  echo "==> 追加 daede 内核前提"
-  cat "$DEVICE_DIR/Config/DAEDE.txt" >> ./.config
+# honk 的内核前提与依赖（eBPF 透明代理）
+if [ -f "$DEVICE_DIR/Config/HONK.txt" ]; then
+  echo "==> 追加 honk 内核前提与依赖"
+  cat "$DEVICE_DIR/Config/HONK.txt" >> ./.config
 fi
 
 # 512M 版：确保 squashfs 根是打包对象（上游 filogic 默认出 sysupgrade.itb）

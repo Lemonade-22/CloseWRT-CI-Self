@@ -76,16 +76,45 @@ Netcore（磊科）N60 Pro 不是同一家，U-Boot 各 layout 的尾部预留�
 **3. 不要选 `MAX-506.5MB`**（除非改用 `linux,ubi` 绑定）。
 它把 ubi 顶到芯片末尾、尾部预留 0，BMT 无处可放。
 
-## daede 支持（软件层同 OWRT）
+## honk 支持（eBPF 透明代理）
 
-固件**不预装** daed / dae / luci-app-daede，只准备内核 eBPF 前提，用户自行安装时开箱即用：
+固件**内置** honk + luci-app-honk（含 Doona Web 界面），不是让用户后装：
 
 ```
-Config/DAEDE.txt   25 行内核选项（BTF、cgroup BPF、kprobes、XDP sockets…）
+Config/HONK.txt        内核 eBPF 选项 + 包与依赖
+scripts/Packages.sh    拉 kenzok8/openwrt-honk，并固定 linux66 通道
+scripts/Settings.sh    在 Config/GENERAL.txt 之后追加 HONK.txt（顺序关键）
 ```
 
-由 `scripts/Settings.sh` 在 `Config/GENERAL.txt` 之后追加——顺序很关键，
-写在前面的会被通用配置覆盖。依据：https://github.com/kenzok8/openwrt-daede
+**两条前提都实测过**：
+
+| 项 | 值 |
+|---|---|
+| 本基线内核 | `6.6.162`（linux66 通道要求 ≥ 6.6.40） |
+| 架构 | MT7986 = aarch64 Cortex-A53（在 honk `DEPENDS` 的允许列表内） |
+| 包管理 | opkg（`USE_APK` 在这棵树里标着 BROKEN，未启用） |
+
+### 为什么要写 generated-stage.mk
+
+honk 仓库 main 分支的 Makefile 默认拉 **stable / 内核 6.12** 的核心归档，
+本基线是 6.6，核心与内核模块会对不上。所以 `Packages.sh` 落一个 stage 文件覆盖：
+
+```
+PKG_SOURCE_URL      .../releases/download/linux66-2026.11.18.1/
+HONK_CORE_LANE      linux66
+HONK_ASSET_AARCH64  honk-core-<commit>-linux66-aarch64.tar.gz
+HONK_HASH_AARCH64   <sha256>
+```
+
+核心归档由上游 CI 交叉编译好，本地**不需要** Rust / Zig / Node 工具链。
+
+### 内核选项关键项
+
+`DEBUG_INFO_BTF`（eBPF 加载必需）、`CGROUP_BPF`（硬性）、`BPF_SYSCALL`、`BPF_JIT`、
+`KPROBES`、XDP sockets，外加 `kmod-sched-core/bpf`、kmod-veth、kmod-nft-queue 等依赖。
+自编固件开了 BTF 就不需要 `vmlinux-btf` 包。
+
+依据：https://kenzok8.github.io/openwrt-honk/build-firmware.html
 
 ## 闭源 WIFI
 
@@ -108,11 +137,11 @@ initramfs-kernel、factory 与 sysupgrade 镜像，文件名带 `-` 源码/分�
 
 ## 校验
 
-`scripts/verify.sh` 在 defconfig 之后检查：设备符号、闭源 wifi、daede 前置、squashfs 根，
+`scripts/verify.sh` 在 defconfig 之后检查：设备符号、闭源 wifi、honk 及其内核前提、squashfs 根，
 并回读 DTS 确认 ubi 真的扩到了 `0x1fa80000`——补丁打了但没匹配上会当场报错。
 
 ## 已知限制
 
-- 未上机验证：分区识别、闭源 wifi 双频、2.5G 口协商、daed 实际转发。
+- 未上机验证：分区识别、闭源 wifi 双频、2.5G 口协商、honk 实际代理与转发。
 - 512M 分区扩展是按 NAND 标注容量推算的，不同批次硬件可能不同，刷机前先备份。
 - 与 TR3000（hanwckf 21.02）是两条完全不同的基线，别互相套用 Config。
