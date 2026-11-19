@@ -55,7 +55,9 @@ custom/tr3000_hanwckf/
    硬件事实（LED/按键 GPIO、MAC 在 bdinfo 0xde00）取自上游主线。
 2. 三个只覆盖 ubi 长度的 `mt7981-cudy-tr3000-v1{,-256m,-512m}.dts`。
 3. `image/mt7981.mk` 追加三个 `Device/` 定义，各带自己的 `IMAGE_SIZE`。
-4. `02_network` 追加 LAN/WAN 映射。
+4. `02_network` 追加 LAN/WAN 映射，并在其中读 bdinfo 取 MAC。
+5. `&eth` 段里 `gmac0`（2500base-x，`phy-handle` → `phy1`）额外加 `ext-phy-reg = <1>`，
+   这是 hanwckf 5.4 驱动启用 RTL822x 专用初始化的开关，详见下一节。
 
 补丁由临时 git 仓机械生成，hunk 行数不会手写错。
 
@@ -72,17 +74,82 @@ custom/tr3000_hanwckf/
 
 ## 第一次跑之前必须知道的风险
 
-**这个移植还没经过真机验证。** 已验证的只有：补丁能干净应用、YAML 合法、
-脚本过 `bash -n`、`.config` 里只有一台目标设备。没验证的是能不能编过、能不能启动。
+**这个移植还没经过真机验证。** 已验证：补丁能干净应用、YAML 合法、脚本过 `bash -n`、
+`.config` 里只有一台目标设备、TEST 模式全绿。
+未验证：能不能编过、能不能启动、**WAN 能不能起链路**。
 
-最可能出问题的地方，按概率排：
+### 1. 2.5G WAN 依赖 `ext-phy-reg`（已加，未真机验证）
 
-1. **PHY 定义**。`gmac1` 挂片上 GbE PHY（`int_gbe_phy`，reg 0 / gmii），
-   `gmac0` 挂 RTL8221B（c45，reg 1，GPIO39 复位、GPIO38 中断）。
-   5.4 树里写法若与 6.6 不同，表现是网口不亮而不是编不过。
-2. **MAC 读取**。用的是 `mtd-mac-address = <&bdinfo 0xde00>`。
-   若这棵树没带 OpenWrt 的 mtd-mac 补丁，MAC 会变成随机值——能上网，但每次重启都变。
-3. **容量选错**。刷入与硬件不符的那档，表现是启动后找不到 rootfs。
+hanwckf 5.4 的 `mtk_eth_soc.c:3758` 会遍历 MAC 节点读 `ext-phy-reg`，**读到才调**
+`mtk_soc_extphy_init()`，再去匹配 PHY ID `0x001CC840`（RTL8226/8221B）。
+之前只写了 `phy-handle`，驱动走标准 PHY 框架，这条厂商专用初始化根本没被触发。
+
+现已按 hanwckf 树里 4 个参考板（GL-MT6000、RG-X60-Pro、TL-XDR、JDCloud）的写法，
+在 `gmac0` 加了 `ext-phy-reg = <1>`（TR3000 的 WAN PHY 在 MDIO 地址 1）。
+
+真机验证顺序：
+
+```
+dmesg | grep "Ext-phy reg"            # 属性被读到了
+dmesg | grep "RTL822x init success"   # PHY ID 匹配，专用初始化跑了
+dmesg | grep "could not attach PHY"   # 若有，phylink 连接阶段失败
+ethtool eth0                           # Link detected: yes + Speed: 2500Mb/s
+```
+
+前两条证明代码路径通了，**最后一条才证明 WAN 真的起链路**。注意 `RTL822x init success!`
+打印在 `Rtl8226b_phy_init()` 调用之前，只能说明命中了分支，不代表初始化完成。
+
+⚠️ 参考板走 `ext-phy-reg` + `fixed-link` 且**不写 `phy-handle`**，TR3000 保留标准 PHY 框架，
+两者并存是否冲突未经真机验证。没改成 `fixed-link` 的原因：它会掩盖外侧网线的真实协商速率，
+`ethtool` 只能看到 MAC 侧固定值。
+
+### 2. 已知缺陷：`mtk_stop()` 写死 PHY 地址 0（未修）
+
+`mtk_eth_soc.c:2737-2741`：
+
+```c
+phy_node = of_parse_phandle(mac->of_node, "phy-handle", 0);
+if (phy_node) {
+    val = _mtk_mdio_read(eth, 0, 0);     // addr=0，reg=BMCR
+    val |= BMCR_PDOWN;
+    _mtk_mdio_write(eth, 0, 0, val);
+}
+```
+
+`phy_node` 拿到了却**没有从里面读 `reg`**。TR3000 的地址 0 是片上千兆 LAN PHY
+（`int_gbe_phy`），WAN 在地址 1。所以 `ip link set eth0 down` / `ifup-ifdown wan`
+时驱动会给 **LAN PHY** 掉电，可能连带 LAN 掉线。
+
+触发条件窄（正常运行时 eth0 一直 up），但驱动里没有对称的上电逻辑，掉电后能否自愈未验证。
+
+修法（未采用，因为要动整棵树共享的驱动）：
+
+```c
+u32 phy_addr = 0;
+of_property_read_u32(phy_node, "reg", &phy_addr);
+val = _mtk_mdio_read(eth, phy_addr, 0);
+val |= BMCR_PDOWN;
+_mtk_mdio_write(eth, phy_addr, 0, val);
+```
+
+替代方案是改 `fixed-link` 让 `mtk_stop` 走 sgmii 分支绕开地址 0，代价同上。
+
+### 3. MAC 读取
+
+实现在 `02_network` 里读 bdinfo 分区（不是 DTS 属性）：
+
+```sh
+lan_mac=$(mtd_get_mac_binary bdinfo 0xde00)
+[ -z "$lan_mac" ] || wan_mac=$(macaddr_add "$lan_mac" 1)
+```
+
+（早前本文档误写成 DTS 的 `mtd-mac-address` 属性，实际补丁里没有该属性。）
+
+### 4. 容量选错
+
+刷入与硬件不符的那档，表现是启动后找不到 rootfs。
+
+---
 
 建议顺序：先 `TEST=true` 只跑配置 → 再放开整编 → 最后才刷机。
 刷之前先备份原厂固件与分区表。
