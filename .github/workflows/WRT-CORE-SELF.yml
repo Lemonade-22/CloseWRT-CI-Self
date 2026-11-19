@@ -1,0 +1,263 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Lemonade-22
+#
+# WRT-CORE-SELF —— 本仓自用的构建核心，面向 hanwckf/immortalwrt-mt798x（openwrt-21.02 / Linux 5.4）。
+#
+# 为什么不复用上游 WRT-CORE.yml：
+#   上游那条是给 immortalwrt 25.x（Linux 6.6、defconfig/ 目录、feeds 走 25.12 分支）写的。
+#   这条线内核是 5.4、feeds 全部锁在 openwrt-21.02，包集合与初始化脚本都不一样，
+#   硬塞进去只会两边都不像。所以单独一份，上游 WRT-CORE.yml 一个字不动，随时能同步。
+name: WRT-CORE-SELF
+
+on:
+  workflow_call:
+    inputs:
+      WRT_CONFIG:
+        description: 'custom/ 下 Config 目录里的文件名（不含 .txt）'
+        required: true
+        type: string
+      WRT_THEME:
+        required: true
+        type: string
+      WRT_NAME:
+        required: true
+        type: string
+      WRT_SSID:
+        required: true
+        type: string
+      WRT_WORD:
+        required: true
+        type: string
+      WRT_IP:
+        required: true
+        type: string
+      WRT_PW:
+        required: true
+        type: string
+      WRT_REPO:
+        required: true
+        type: string
+      WRT_BRANCH:
+        required: true
+        type: string
+      WRT_SOURCE:
+        required: true
+        type: string
+      WRT_PACKAGE:
+        required: false
+        type: string
+      WRT_TEST:
+        required: false
+        default: false
+        type: boolean
+
+env:
+  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+  WRT_CONFIG: ${{inputs.WRT_CONFIG}}
+  WRT_THEME: ${{inputs.WRT_THEME}}
+  WRT_NAME: ${{inputs.WRT_NAME}}
+  WRT_SSID: ${{inputs.WRT_SSID}}
+  WRT_WORD: ${{inputs.WRT_WORD}}
+  WRT_IP: ${{inputs.WRT_IP}}
+  WRT_PW: ${{inputs.WRT_PW}}
+  WRT_REPO: ${{inputs.WRT_REPO}}
+  WRT_BRANCH: ${{inputs.WRT_BRANCH}}
+  WRT_SOURCE: ${{inputs.WRT_SOURCE}}
+  WRT_PACKAGE: ${{inputs.WRT_PACKAGE}}
+  WRT_TEST: ${{inputs.WRT_TEST}}
+
+jobs:
+  core:
+    name: ${{inputs.WRT_SOURCE}}
+    # 21.02 的工具链和脚本在 24.04 上会踩 python3.12 / gcc-14，
+    # 钉在 22.04 是最省事的做法，别改成 ubuntu-latest。
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    outputs:
+      cache_prefix: ${{steps.initialize-values.outputs.cache_prefix}}
+      cache_key: ${{steps.clone-code.outputs.cache_key}}
+    steps:
+      - name: Checkout Projects
+        uses: actions/checkout@v4
+
+      - name: Initialization Environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo systemctl stop unattended-upgrades.service apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
+          sudo -E apt-get -yqq update
+          sudo -E apt-get -yqq install \
+            bc bison build-essential ca-certificates ccache cpio curl \
+            device-tree-compiler dos2unix file flex g++ gawk gcc-multilib \
+            gettext git gperf haveged help2man intltool libelf-dev \
+            libfuse-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev \
+            libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+            libssl-dev libtool libtool-bin make nano patch pkg-config \
+            python3 python3-distutils python3-pyelftools python3-setuptools \
+            python3-yaml rsync scons squashfs-tools subversion swig \
+            texinfo uglifyjs unzip vim wget xmlto xxd zlib1g-dev
+          sudo timedatectl set-timezone "Asia/Shanghai"
+
+          sudo mkdir -p /mnt/build_wrt
+          sudo chown $USER:$USER /mnt/build_wrt
+          sudo ln -sfn /mnt/build_wrt $GITHUB_WORKSPACE/wrt
+
+      - name: Initialization Values
+        id: initialize-values
+        run: |
+          set -euo pipefail
+          # 设备型号直接从 .config 里读，不靠文件名猜
+          WRT_DEVICE=$(grep -m 1 -oP '^CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_\K[^=]+(?==y)' "./custom/tr3000/Config/$WRT_CONFIG.txt")
+          WRT_CACHE_SOURCE=${WRT_SOURCE//\//-}
+          WRT_CACHE_BRANCH=${WRT_BRANCH//\//-}
+          WRT_CACHE_PREFIX="wrt-self-$WRT_CACHE_SOURCE-$WRT_CACHE_BRANCH-$WRT_DEVICE"
+
+          {
+            echo "WRT_INFO=${WRT_SOURCE%%/*}"
+            echo "WRT_MARK=${GITHUB_REPOSITORY%%/*}"
+            echo "WRT_DATE=$(TZ=UTC-8 date +"%y.%m.%d-%H.%M.%S")"
+            echo "WRT_CACHE_PREFIX=$WRT_CACHE_PREFIX"
+            echo "WRT_DEVICE=$WRT_DEVICE"
+            echo "WRT_KVER=none"
+            echo "WRT_LIST=none"
+          } >> "$GITHUB_ENV"
+          echo "cache_prefix=$WRT_CACHE_PREFIX" >> "$GITHUB_OUTPUT"
+
+      - name: Clone Code
+        id: clone-code
+        run: |
+          set -euo pipefail
+          git clone --depth=1 --single-branch --branch "$WRT_BRANCH" "$WRT_REPO" ./wrt/
+          cd ./wrt/
+          WRT_HASH=$(git rev-parse HEAD)
+          echo "WRT_HASH=$WRT_HASH" >> $GITHUB_ENV
+          echo "WRT_CACHE_KEY=$WRT_CACHE_PREFIX-$WRT_HASH" >> $GITHUB_ENV
+          echo "cache_key=$WRT_CACHE_PREFIX-$WRT_HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Apply device patch
+        run: |
+          set -euo pipefail
+          cd ./wrt/
+          PATCH="$GITHUB_WORKSPACE/custom/tr3000/patches/0001-add-cudy-tr3000.patch"
+          # 先 dry-run：上游一改，这里立刻红，而不是编到一半才报废
+          git apply --check "$PATCH"
+          git apply "$PATCH"
+          git diff --stat
+
+          # 确认补丁真的落到了两处关键位置
+          test -f target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cudy-tr3000-v1.dts
+          grep -q "cudy_tr3000-v1" target/linux/mediatek/image/mt7981.mk
+          grep -q "cudy,tr3000-v1" target/linux/mediatek/mt7981/base-files/etc/board.d/02_network
+
+      - name: Restore Build Cache
+        id: cache-restore
+        if: ${{ !inputs.WRT_TEST }}
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{env.WRT_CACHE_KEY}}
+          restore-keys: ${{env.WRT_CACHE_PREFIX}}-
+          path: |
+            ./wrt/.ccache
+            ./wrt/staging_dir/host*
+            ./wrt/staging_dir/tool*
+
+      - name: Update Feeds
+        run: |
+          set -euo pipefail
+          cd ./wrt/
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Custom Packages
+        run: |
+          set -euo pipefail
+          cd ./wrt/
+          bash "$GITHUB_WORKSPACE/custom/tr3000/scripts/Packages.sh"
+
+      - name: Custom Settings
+        run: |
+          set -euo pipefail
+          cd ./wrt/
+          cp "$GITHUB_WORKSPACE/custom/tr3000/Config/$WRT_CONFIG.txt" .config
+          bash "$GITHUB_WORKSPACE/custom/tr3000/scripts/Settings.sh"
+          make defconfig
+
+          # 设备与加速栈必须真的在最终 .config 里，被 kconfig 丢掉要当场发现。
+          # 设备符号按当前配置推出来，不能写死：三份配置各对应一种闪存容量。
+          for s in \
+            "CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_${WRT_DEVICE}=y" \
+            "CONFIG_PACKAGE_kmod-mt_wifi=y" \
+            "CONFIG_PACKAGE_kmod-mediatek_hnat=y" \
+            "CONFIG_PACKAGE_luci-app-turboacc-mtk=y"; do
+            grep -qx "$s" .config || { echo "::error::config lost: $s"; exit 1; }
+          done
+
+      - name: Download Packages
+        if: ${{ !inputs.WRT_TEST }}
+        run: |
+          cd ./wrt/
+          make download -j$(nproc) || make download -j1 V=s
+
+      - name: Compile Firmware
+        if: ${{ !inputs.WRT_TEST }}
+        run: |
+          cd ./wrt/
+          make -j$(nproc) || make -j1 V=s
+
+      - name: Save Build Cache
+        if: ${{ !inputs.WRT_TEST && success() && steps.cache-restore.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          key: ${{env.WRT_CACHE_KEY}}
+          path: |
+            ./wrt/.ccache
+            ./wrt/staging_dir/host*
+            ./wrt/staging_dir/tool*
+
+      - name: Package Firmware
+        run: |
+          set -euo pipefail
+          cd ./wrt/ && mkdir -p ./upload/
+          cp -f ./.config ./upload/Config-"$WRT_CONFIG"-"$WRT_INFO"-"$WRT_BRANCH"-"$WRT_DATE".txt
+
+          if [[ "$WRT_TEST" != 'true' ]]; then
+            echo "WRT_KVER=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^kernel - \K[\d\.]+' {} \; | head -1)" >> $GITHUB_ENV
+            echo "WRT_LIST=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^luci-(app|theme)[^ ]*' {} \; | sort -u | tr '\n' ' ')" >> $GITHUB_ENV
+
+            find ./bin/targets/ -iregex ".*\(buildinfo\|json\|sha256sums\|packages\)$" -exec rm -rf {} + || true
+            for FILE in $(find ./bin/targets/ -type f); do
+              BASE=$(basename "$FILE")
+              mv -f "$FILE" "./upload/${BASE%.*}-"$WRT_INFO"-"$WRT_BRANCH"-"$WRT_DATE".${BASE##*.}"
+            done
+          fi
+
+      - name: Release Firmware
+        if: ${{ !inputs.WRT_TEST }}
+        uses: softprops/action-gh-release@master
+        with:
+          tag_name: ${{env.WRT_CONFIG}}-${{env.WRT_INFO}}-${{env.WRT_BRANCH}}-${{env.WRT_DATE}}
+          files: ./wrt/upload/*.*
+          body: |
+            Cudy TR3000 v1 —— ImmortalWrt 21.02 / Linux 5.4（hanwckf 基线）
+
+            保留 MTK 闭源加速栈：kmod-mt_wifi（闭源 wifi）、kmod-mediatek_hnat（硬件 NAT）、
+            luci-app-turboacc-mt、mtkhqos_util。
+
+            源码：${{env.WRT_REPO}}
+            分支：${{env.WRT_BRANCH}}
+            提交：${{env.WRT_HASH}}
+
+            配置：${{env.WRT_CONFIG}}
+            设备：${{env.WRT_DEVICE}}
+
+            登录地址：${{env.WRT_IP}}
+            登录密码：${{env.WRT_PW}}
+            WIFI名称：${{env.WRT_SSID}}
+            WIFI密码：${{env.WRT_WORD}}
+
+            内核版本：${{env.WRT_KVER}}
+            插件列表：${{env.WRT_LIST}}
+
+            注意：TR3000 在 21.02 线上游并无官方支持，本构建带一份自维护的设备移植补丁
+            （custom/tr3000/patches/0001-add-cudy-tr3000.patch）。刷机前请先确认分区
+            与你的硬件一致。

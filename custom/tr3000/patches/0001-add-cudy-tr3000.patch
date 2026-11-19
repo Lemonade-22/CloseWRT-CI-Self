@@ -1,0 +1,405 @@
+diff --git a/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cudy-tr3000-v1-256m.dts b/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cudy-tr3000-v1-256m.dts
+new file mode 100644
+index 0000000..86667c5
+--- /dev/null
++++ b/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cudy-tr3000-v1-256m.dts
+@@ -0,0 +1,15 @@
++/dts-v1/;
++#include "mt7981-cudy-tr3000-v1.dtsi"
++
++/ {
++	model = "Cudy TR3000 v1 256MB";
++	compatible = "cudy,tr3000-v1-256mb", "mediatek,mt7981";
++};
++
++/*
++ * 只覆盖 ubi 长度。数值出处：
++ *   256MB 闪存，padavanonly/immortalwrt-mt798x-6.6 同名 dts
++ */
++&ubi_part {
++	reg = <0x5c0000 0xe600000>;
++};
+diff --git a/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cudy-tr3000-v1-512m.dts b/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cudy-tr3000-v1-512m.dts
+new file mode 100644
+index 0000000..09c279c
+--- /dev/null
++++ b/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cudy-tr3000-v1-512m.dts
+@@ -0,0 +1,15 @@
++/dts-v1/;
++#include "mt7981-cudy-tr3000-v1.dtsi"
++
++/ {
++	model = "Cudy TR3000 v1 512MB";
++	compatible = "cudy,tr3000-v1-512mb", "mediatek,mt7981";
++};
++
++/*
++ * 只覆盖 ubi 长度。数值出处：
++ *   512MB 改机版，ubi_build 的 diy-cudy-tr3000-512MB.sh
++ */
++&ubi_part {
++	reg = <0x5c0000 0x1FA40000>;
++};
+diff --git a/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cudy-tr3000-v1.dts b/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cudy-tr3000-v1.dts
+new file mode 100644
+index 0000000..e3a6a52
+--- /dev/null
++++ b/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cudy-tr3000-v1.dts
+@@ -0,0 +1,15 @@
++/dts-v1/;
++#include "mt7981-cudy-tr3000-v1.dtsi"
++
++/ {
++	model = "Cudy TR3000 v1";
++	compatible = "cudy,tr3000-v1", "mediatek,mt7981";
++};
++
++/*
++ * 只覆盖 ubi 长度。数值出处：
++ *   原厂 128MB 闪存，openwrt 主线 mt7981b-cudy-tr3000-v1.dts
++ */
++&ubi_part {
++	reg = <0x5c0000 0x4000000>;
++};
+diff --git a/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cudy-tr3000-v1.dtsi b/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cudy-tr3000-v1.dtsi
+new file mode 100644
+index 0000000..2b4ae75
+--- /dev/null
++++ b/target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cudy-tr3000-v1.dtsi
+@@ -0,0 +1,227 @@
++// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
++/*
++ * Cudy TR3000 v1 公共部分 —— MT7981 + 256MB DDR3 + SPI-NAND
++ *
++ * 这份 DTS 是为 OpenWrt 21.02 / Linux 5.4 树写的（本仓 hanwckf 基线）。
++ * 硬件事实（LED/按键 GPIO、MAC 落在 bdinfo 0xde00、ubi 起于 0x5c0000）
++ * 取自上游 openwrt 主线 mt7981b-cudy-tr3000-v1.dts；
++ * 写法照 5.4 树里的同类板（mt7981-cmcc-xr30.dts），因为 5.4 没有
++ * nvmem-layout / "linux,ubi" 这些新绑定。
++ */
++
++/dts-v1/;
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/input.h>
++
++#include "mt7981.dtsi"
++
++/ {
++	aliases {
++		label-mac-device = &gmac1;
++		led-boot = &led_sys_red;
++		led-failsafe = &led_sys_red;
++		led-running = &led_sys_white;
++		led-upgrade = &led_sys_white;
++		serial0 = &uart0;
++	};
++
++	chosen {
++		bootargs = "console=ttyS0,115200n1 loglevel=8 earlycon=uart8250,mmio32,0x11002000";
++	};
++
++	memory {
++		reg = <0 0x40000000 0 0x10000000>;
++	};
++
++	gpio-export {
++		compatible = "gpio-export";
++
++		modem-power {
++			gpio-export,name = "modem_power";
++			gpio-export,output = <0>;
++			gpios = <&pio 9 GPIO_ACTIVE_LOW>;
++		};
++	};
++
++	gpio-keys {
++		compatible = "gpio-keys";
++
++		reset {
++			label = "reset";
++			linux,code = <KEY_RESTART>;
++			gpios = <&pio 1 GPIO_ACTIVE_LOW>;
++		};
++
++		mode {
++			label = "mode";
++			linux,code = <BTN_0>;
++			linux,input-type = <EV_SW>;
++			gpios = <&pio 0 GPIO_ACTIVE_LOW>;
++			debounce-interval = <60>;
++		};
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		led_sys_red: red {
++			label = "tr3000:red:power";
++			gpios = <&pio 11 GPIO_ACTIVE_LOW>;
++		};
++
++		led_sys_white: white {
++			label = "tr3000:white:status";
++			gpios = <&pio 10 GPIO_ACTIVE_LOW>;
++		};
++	};
++};
++
++&uart0 {
++	status = "okay";
++};
++
++&watchdog {
++	status = "okay";
++};
++
++&eth {
++	pinctrl-names = "default";
++	pinctrl-0 = <&mdio_pins>;
++	status = "okay";
++
++	gmac0: mac@0 {
++		compatible = "mediatek,eth-mac";
++		reg = <0>;
++		phy-mode = "2500base-x";
++		phy-handle = <&phy1>;
++	};
++
++	gmac1: mac@1 {
++		compatible = "mediatek,eth-mac";
++		reg = <1>;
++		phy-mode = "gmii";
++		phy-handle = <&int_gbe_phy>;
++	};
++
++	mdio: mdio-bus {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		int_gbe_phy: ethernet-phy@0 {
++			compatible = "ethernet-phy-id03a2.9461";
++			nvmem-cells = <&phy_calibration>;
++			nvmem-cell-names = "phy-cal-data";
++			reg = <0>;
++			phy-mode = "gmii";
++		};
++
++		phy1: ethernet-phy@1 {
++			compatible = "ethernet-phy-ieee802.3-c45";
++			reg = <1>;
++			reset-assert-us = <100000>;
++			reset-deassert-us = <100000>;
++			reset-gpios = <&pio 39 GPIO_ACTIVE_LOW>;
++			interrupts = <38 IRQ_TYPE_LEVEL_LOW>;
++			interrupt-parent = <&pio>;
++			realtek,aldps-enable;
++		};
++	};
++};
++
++&hnat {
++	mtketh-wan = "eth0";
++	mtketh-lan = "eth1";
++	mtketh-max-gmac = <2>;
++	status = "okay";
++};
++
++&spi0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi0_flash_pins>;
++	status = "okay";
++
++	spi_nand: spi_nand@0 {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		compatible = "spi-nand";
++		reg = <0>;
++
++		spi-max-frequency = <52000000>;
++		spi-tx-bus-width = <4>;
++		spi-rx-bus-width = <4>;
++		spi-cal-enable;
++		spi-cal-mode = "read-data";
++		spi-cal-datalen = <7>;
++		spi-cal-data = /bits/ 8 <0x53 0x50 0x49 0x4E 0x41 0x4E 0x44>;
++		spi-cal-addrlen = <5>;
++		spi-cal-addr = /bits/ 32 <0x0 0x0 0x0 0x0 0x0>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
++				label = "BL2";
++				reg = <0x0 0x100000>;
++				read-only;
++			};
++
++			partition@100000 {
++				label = "u-boot-env";
++				reg = <0x100000 0x80000>;
++			};
++
++			factory: partition@180000 {
++				label = "Factory";
++				reg = <0x180000 0x200000>;
++				read-only;
++			};
++
++			bdinfo: partition@380000 {
++				label = "bdinfo";
++				reg = <0x380000 0x40000>;
++				read-only;
++			};
++
++			partition@3c0000 {
++				label = "FIP";
++				reg = <0x3c0000 0x200000>;
++				read-only;
++			};
++
++			/*
++			 * ubi 的起点三种闪存都一样（0x5c0000），只有长度不同。
++			 * 拆成 dtsi 就是为了让三个变体只覆盖这一个 reg，其余硬件定义共用。
++			 */
++			ubi_part: partition@5c0000 {
++				label = "ubi";
++				reg = <0x5c0000 0x4000000>;
++			};
++		};
++	};
++};
++
++&pio {
++	/*
++	 * eth 在 dtsi 里是 disabled 且不带 pinctrl，mdio 的引脚组要板级自己给。
++	 * 5.4 树里这一组的固定写法就是 function/groups 都叫 mdio。
++	 */
++	mdio_pins: mdio-pins {
++		mux {
++			function = "mdio";
++			groups = "mdio";
++		};
++	};
++
++	spi0_flash_pins: spi0-pins {
++		mux {
++			function = "spi";
++			groups = "spi0", "spi0_wp_hold";
++		};
++	};
++};
++
++&xhci {
++	status = "okay";
++};
+\ No newline at end of file
+diff --git a/target/linux/mediatek/image/mt7981.mk b/target/linux/mediatek/image/mt7981.mk
+index 79dfe1f..183528b 100644
+--- a/target/linux/mediatek/image/mt7981.mk
++++ b/target/linux/mediatek/image/mt7981.mk
+@@ -809,3 +809,55 @@ define Device/routerich_ax3000
+   DEVICE_PACKAGES := $(MT7981_USB_PKGS)
+ endef
+ TARGET_DEVICES += routerich_ax3000
++
++# Cudy TR3000：同一块板子有三种闪存，分区只差 ubi 长度，设备名分开以免刷错。
++define Device/cudy_tr3000-v1
++  DEVICE_VENDOR := Cudy
++  DEVICE_MODEL := TR3000 v1 (128M)
++  DEVICE_DTS := mt7981-cudy-tr3000-v1
++  DEVICE_DTS_DIR := $(DTS_DIR)/mediatek
++  SUPPORTED_DEVICES := cudy,tr3000-v1
++  UBINIZE_OPTS := -E 5
++  BLOCKSIZE := 128k
++  PAGESIZE := 2048
++  IMAGE_SIZE := 65536k
++  KERNEL_IN_UBI := 1
++  IMAGES += factory.bin
++  IMAGE/factory.bin := append-ubi | check-size $$$$(IMAGE_SIZE)
++  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
++endef
++TARGET_DEVICES += cudy_tr3000-v1
++
++define Device/cudy_tr3000-v1-256m
++  DEVICE_VENDOR := Cudy
++  DEVICE_MODEL := TR3000 v1 (256M)
++  DEVICE_DTS := mt7981-cudy-tr3000-v1-256m
++  DEVICE_DTS_DIR := $(DTS_DIR)/mediatek
++  SUPPORTED_DEVICES := cudy,tr3000-v1-256mb
++  UBINIZE_OPTS := -E 5
++  BLOCKSIZE := 128k
++  PAGESIZE := 2048
++  IMAGE_SIZE := 229376k
++  KERNEL_IN_UBI := 1
++  IMAGES += factory.bin
++  IMAGE/factory.bin := append-ubi | check-size $$$$(IMAGE_SIZE)
++  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
++endef
++TARGET_DEVICES += cudy_tr3000-v1-256m
++
++define Device/cudy_tr3000-v1-512m
++  DEVICE_VENDOR := Cudy
++  DEVICE_MODEL := TR3000 v1 (512M)
++  DEVICE_DTS := mt7981-cudy-tr3000-v1-512m
++  DEVICE_DTS_DIR := $(DTS_DIR)/mediatek
++  SUPPORTED_DEVICES := cudy,tr3000-v1-512mb
++  UBINIZE_OPTS := -E 5
++  BLOCKSIZE := 128k
++  PAGESIZE := 2048
++  IMAGE_SIZE := 507904k
++  KERNEL_IN_UBI := 1
++  IMAGES += factory.bin
++  IMAGE/factory.bin := append-ubi | check-size $$$$(IMAGE_SIZE)
++  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
++endef
++TARGET_DEVICES += cudy_tr3000-v1-512m
+diff --git a/target/linux/mediatek/mt7981/base-files/etc/board.d/02_network b/target/linux/mediatek/mt7981/base-files/etc/board.d/02_network
+index ae85c00..a2c4108 100755
+--- a/target/linux/mediatek/mt7981/base-files/etc/board.d/02_network
++++ b/target/linux/mediatek/mt7981/base-files/etc/board.d/02_network
+@@ -41,6 +41,13 @@ mediatek_setup_interfaces()
+ 		ucidef_add_switch "switch0" \
+ 			"0:lan" "1:lan" "2:lan" "3:wan" "6u@eth0" "5u@eth1"
+ 		;;
++	cudy,tr3000-v1)
++		ucidef_set_interfaces_lan_wan "eth1" "eth0"
++		;;
++	cudy,tr3000-v1-256mb|	\
++	cudy,tr3000-v1-512mb)
++		ucidef_set_interfaces_lan_wan "eth1" "eth0"
++		;;
+ 	*cetron,ct3003*)
+ 		ucidef_set_interfaces_lan_wan "eth0.1" "eth0.2"
+ 		ucidef_add_switch "switch0" \
+@@ -150,6 +157,10 @@
+ 	local wan_mac_offset="0x24"
+ 
+ 	case $board in
++	cudy,tr3000-v1|cudy,tr3000-v1-256mb|cudy,tr3000-v1-512mb)
++		lan_mac=$(mtd_get_mac_binary bdinfo 0xde00)
++		[ -z "$lan_mac" ] || wan_mac=$(macaddr_add "$lan_mac" 1)
++		;;
+ 	*mt3000*)
+ 		wan_mac=$(mtd_get_mac_binary $part_name 0x0a)
+ 		lan_mac=$(macaddr_add "$wan_mac" 1)
+diff --git a/target/linux/mediatek/mt7981/base-files/lib/upgrade/platform.sh b/target/linux/mediatek/mt7981/base-files/lib/upgrade/platform.sh
+--- a/target/linux/mediatek/mt7981/base-files/lib/upgrade/platform.sh
++++ b/target/linux/mediatek/mt7981/base-files/lib/upgrade/platform.sh
+@@ -188,6 +188,7 @@
+ 	local board=$(board_name)
+ 
+ 	case "$board" in
++	cudy,tr3000-v1|cudy,tr3000-v1-256mb|cudy,tr3000-v1-512mb|\
+ 	xiaomi,mi-router-wr30u-112m|\
+ 	xiaomi,mi-router-ax3000t|\
+ 	xiaomi,mi-router-ax3000t-an8855|\
+@@ -244,6 +245,7 @@
+ 	[ "$#" -gt 1 ] && return 1
+ 
+ 	case "$board" in
++	cudy,tr3000-v1|cudy,tr3000-v1-256mb|cudy,tr3000-v1-512mb|\
+ 	*mt3000* |\
+ 	glinet,x3000-emmc |\
+ 	*xe3000* |\

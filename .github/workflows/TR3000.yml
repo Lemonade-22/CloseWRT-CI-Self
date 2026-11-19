@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Lemonade-22
+#
+# Cudy TR3000 —— 调用 WRT-CORE-SELF.yml。
+#
+# 同一块板子有三种闪存容量，分区只差 ubi 长度，所以分三档各出一个 Release：
+#   TR3000-128M / TR3000-256M / TR3000-512M
+# 刷错容量会认不到分区，务必看清文件名再刷。
+#
+# 源码基线：hanwckf/immortalwrt-mt798x 的 openwrt-21.02（Linux 5.4）。
+name: TR3000_hanwckf
+
+on:
+  workflow_dispatch:
+    inputs:
+      PACKAGE:
+        description: '手动追加的 .config 片段，多行用换行分隔'
+        required: false
+        type: string
+      TEST:
+        description: '仅生成配置、不编译固件（快速验补丁与 config 能不能过）'
+        required: false
+        default: false
+        type: boolean
+      FLASH:
+        description: '只编某一档：128M / 256M / 512M，留空编全部三档'
+        required: false
+        type: choice
+        options: ['', '128M', '256M', '512M']
+  # 每周一 06:00（北京时间）
+  schedule:
+    - cron: '0 22 * * 0'
+
+permissions:
+  contents: write
+
+jobs:
+  config:
+    name: ${{matrix.CONFIG}}
+    strategy:
+      fail-fast: false
+      # 三档互不依赖，但每份都要完整编译；并发太多容易一起撞上 runner 上限
+      max-parallel: 3
+      matrix:
+        # FLASH 留空编全部三档；填了 128M/256M/512M 只编那一档。
+        # 过滤必须写在 matrix 里：job 级 if 在矩阵展开前求值，引用 matrix.* 会让
+        # 整个 workflow 解析失败（GitHub 报 Unrecognized named-value: 'matrix'）。
+        CONFIG: ${{ fromJSON(!inputs.FLASH && '["TR3000-128M","TR3000-256M","TR3000-512M"]' || format('["TR3000-{0}"]', inputs.FLASH)) }}
+        REPO_INFO:
+          # 21.02 / Linux 5.4 基线，带 MTK 闭源加速
+          - {SOURCE: "hanwckf/immortalwrt-mt798x", BRANCH: "openwrt-21.02"}
+          # 备选：TR3000 原生支持（Linux 6.6）。放开前要另建 6.6 口径的 Config，
+          # 设备名是 mediatek_filogic_...，不能直接复用现在的三份。
+          # - {SOURCE: "padavanonly/immortalwrt-mt798x-6.6", BRANCH: "openwrt-24.10-6.6"}
+
+    uses: ./.github/workflows/WRT-CORE-SELF.yml
+    with:
+      WRT_CONFIG: ${{matrix.CONFIG}}
+      WRT_THEME: argon
+      WRT_NAME: CWRT
+      WRT_SSID: CWRT
+      WRT_WORD: '12345678'
+      WRT_IP: 192.168.10.1
+      WRT_PW: 无
+      WRT_REPO: https://github.com/${{matrix.REPO_INFO.SOURCE}}.git
+      WRT_BRANCH: ${{matrix.REPO_INFO.BRANCH}}
+      WRT_SOURCE: ${{matrix.REPO_INFO.SOURCE}}
+      WRT_PACKAGE: ${{inputs.PACKAGE}}
+      WRT_TEST: ${{inputs.TEST || false}}
