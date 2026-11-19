@@ -81,7 +81,7 @@ jobs:
       cache_key: ${{steps.clone-code.outputs.cache_key}}
     steps:
       - name: Checkout Projects
-        uses: actions/checkout@v7
+        uses: actions/checkout@main
 
       - name: Initialization Environment
         env:
@@ -189,7 +189,7 @@ jobs:
       - name: Restore Build Cache
         id: cache-restore
         if: ${{ !inputs.WRT_TEST }}
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@main
         with:
           key: ${{env.WRT_CACHE_KEY}}
           restore-keys: ${{env.WRT_CACHE_PREFIX}}-
@@ -292,7 +292,7 @@ jobs:
       - name: Upload Build Reports
         if: ${{ !inputs.WRT_TEST && always() }}
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@main
         with:
           name: build-reports-${{env.WRT_CONFIG}}-${{env.WRT_INFO}}-${{github.run_attempt}}
           path: ./build-reports/
@@ -300,7 +300,7 @@ jobs:
 
       - name: Save Build Cache
         if: ${{ !inputs.WRT_TEST && success() && steps.cache-restore.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@main
         with:
           key: ${{env.WRT_CACHE_KEY}}
           path: |
