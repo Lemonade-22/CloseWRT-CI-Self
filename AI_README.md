@@ -9,7 +9,7 @@ OpenWrt / ImmortalWrt 固件自动构建。**自维护机型**（上游不支持
 ## 三种 workflow 的分工
 
 ```
-WRT-CORE.yml        通用构建核心（被 CWRT-ALL / N60-Pro-498M / WRT-TEST 调用）
+WRT-CORE.yml        通用构建核心（被 CWRT-ALL / WRT-TEST 调用）
 WRT-CORE-SELF.yml   自维护机型的构建核心（被 TR3000 调用）
 <机型>.yml           触发入口，只负责 matrix 定义 + 传参
 ```
