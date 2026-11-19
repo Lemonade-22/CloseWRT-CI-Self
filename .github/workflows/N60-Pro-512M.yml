@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: MIT
+# Netcore N60 Pro 512M NAND（MT7986A / filogic）
+#
+# 源码基线用的是上游 CloseWRT-CI 的 MT7986 口径：
+#   Yuzhii0718/immortalwrt-mt798x-6.6-padavanonly @ openwrt-24.10-6.6
+# 这条线带 MTK 闭源 WIFI（package/mtk/drivers/mt_wifi），开源 mt76 不存在，
+# 所以没有 OWRT 那两档 WIFI-YES/NO 的开关。
+#
+# 软件层按 OWRT 的做法：daede 只准备内核 eBPF 前提（custom/n60-pro-512m/Config/DAEDE.txt），
+# 不把 daed/dae 二进制塞进固件。
+name: N60 Pro 512M
+run-name: ${{ inputs.FIRMWARE || '编译固件' }} · ${{ inputs.TEST && '仅输出配置' || '完整编译' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      PACKAGE:
+        description: '手动追加的 .config 片段，多行用换行分隔'
+        required: false
+        type: string
+      TEST:
+        description: '仅生成配置、不编译固件'
+        required: false
+        default: false
+        type: boolean
+      FIRMWARE:
+        description: '自定义固件名前缀（留空用默认）'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/WRT-CORE-SELF.yml
+    with:
+      WRT_CONFIG: N60-Pro-512M
+      WRT_THEME: vantage
+      WRT_NAME: CWRT
+      WRT_SSID: CWRT
+      WRT_WORD: '12345678'
+      WRT_IP: 192.168.10.1
+      WRT_PW: 无
+      WRT_REPO: https://github.com/Yuzhii0718/immortalwrt-mt798x-6.6-padavanonly.git
+      WRT_BRANCH: openwrt-24.10-6.6
+      WRT_SOURCE: Yuzhii0718/immortalwrt-mt798x-6.6-padavanonly
+      WRT_PACKAGE: ${{ inputs.PACKAGE }}
+      WRT_TEST: ${{ inputs.TEST || false }}

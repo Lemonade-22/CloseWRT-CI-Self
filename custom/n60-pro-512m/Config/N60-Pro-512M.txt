@@ -1,0 +1,11 @@
+# Netcore N60 Pro 512M NAND —— MT7986A / filogic
+#
+# 与上游 Config/MT7986.txt 同口径，但只选这一台设备。
+# 闭源 wifi（kmod-mt_wifi + CONFIG_MTK_WIFI_*）来自上游 Config/GENERAL.txt，此处不重复。
+# 512M 版的分区由 patches/n60pro-512m-ubi-5065m.patch 扩到约 506.5 MiB。
+CONFIG_TARGET_mediatek=y
+CONFIG_TARGET_mediatek_filogic=y
+CONFIG_TARGET_MULTI_PROFILE=y
+CONFIG_TARGET_PER_DEVICE_ROOTFS=y
+CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_netcore_n60-pro=y
+CONFIG_TARGET_DEVICE_PACKAGES_mediatek_filogic_DEVICE_netcore_n60-pro=""

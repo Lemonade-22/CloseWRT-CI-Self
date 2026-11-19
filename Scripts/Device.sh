@@ -16,6 +16,7 @@ CONFIG="${2:-${WRT_CONFIG:-}}"
 DEVICE=""
 case "$CONFIG" in
   TR3000-*_hanwckf) DEVICE="tr3000_hanwckf" ;;
+  N60-Pro-512M) DEVICE="n60-pro-512m" ;;
 esac
 
 if [ -z "$DEVICE" ]; then
