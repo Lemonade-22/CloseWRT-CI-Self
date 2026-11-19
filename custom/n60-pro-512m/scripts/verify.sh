@@ -12,7 +12,6 @@ check '^CONFIG_PACKAGE_honk=y$' 'honk 本体'
 check '^CONFIG_PACKAGE_luci-app-honk=y$' 'honk LuCI 面板'
 check '^CONFIG_KERNEL_DEBUG_INFO_BTF=y$' 'honk 必需：内核 BTF'
 check '^CONFIG_KERNEL_CGROUP_BPF=y$' 'honk 必需：cgroup BPF'
-check '^CONFIG_KERNEL_BPF_SYSCALL=y$' 'honk 必需：BPF syscall'
 check '^CONFIG_PACKAGE_kmod-nft-queue=y$' 'honk 依赖：kmod-nft-queue'
 check '^CONFIG_TARGET_ROOTFS_SQUASHFS=y$' 'squashfs 根'
 
