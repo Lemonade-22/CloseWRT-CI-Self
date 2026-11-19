@@ -15,16 +15,16 @@ check '^CONFIG_TARGET_ROOTFS_SQUASHFS=y$' 'squashfs 根'
 # 补丁是否真的打上了：NMBM 必须 256（否则 NMBM 找不到签名，刷完不开机）
 DTS='target/linux/mediatek/dts/mt7986a-netcore-n60-pro.dts'
 if [ -f "$DTS" ]; then
-  if grep -q 'mediatek,bmt-max-reserved-blocks = <256>;' "$DTS"; then
-    echo '  ok   NMBM reserved-blocks = 256'
+  if grep -q 'mediatek,bmt-max-reserved-blocks = <64>;' "$DTS"; then
+    echo '  ok   NMBM reserved-blocks = 64（原厂值，对应 8 MiB）'
   else
-    echo '::error::NMBM reserved-blocks 不是 256，刷机可能不开机（见 OpenWrt PR #24001）'
+    echo '::error::NMBM reserved-blocks 被改掉了，应与原厂一致为 64'
     FAIL=1
   fi
-  if grep -q 'reg = <0x0580000 0x1DA80000>;' "$DTS"; then
-    echo '  ok   ubi 扩到 0x1DA80000（约 474 MiB，尾部留 32 MiB 给 NMBM）'
+  if grep -q 'reg = <0x0580000 0x1EA00000>;' "$DTS"; then
+    echo '  ok   ubi = 0x1EA00000（490 MiB，对应 U-Boot 的 spi-nand-512MB-ubi-490MB）'
   else
-    echo '::error::ubi 长度不对，应为 0x1DA80000（512MiB - 5.5MiB 起点 - 32MiB NMBM）'
+    echo '::error::ubi 长度必须与 U-Boot layout 一致：0x1EA00000'
     FAIL=1
   fi
 fi

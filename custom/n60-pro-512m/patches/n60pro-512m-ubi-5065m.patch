@@ -1,22 +1,13 @@
 diff --git a/target/linux/mediatek/dts/mt7986a-netcore-n60-pro.dts b/target/linux/mediatek/dts/mt7986a-netcore-n60-pro.dts
-index 2174038..a203514 100644
+index 2174038..7a5a986 100644
 --- a/target/linux/mediatek/dts/mt7986a-netcore-n60-pro.dts
 +++ b/target/linux/mediatek/dts/mt7986a-netcore-n60-pro.dts
-@@ -242,7 +242,7 @@
- 		
- 		mediatek,nmbm;
-         	mediatek,bmt-max-ratio = <1>;
--        	mediatek,bmt-max-reserved-blocks = <64>;
-+        	mediatek,bmt-max-reserved-blocks = <256>;
- 
- 		partitions {
- 			compatible = "fixed-partitions";
 @@ -295,7 +295,7 @@
  
  			partition@580000 {
  				label = "ubi";
 -				reg = <0x0580000 0x7280000>;
-+				reg = <0x0580000 0x1DA80000>;
++				reg = <0x0580000 0x1EA00000>;
  			};
  		};
  	};

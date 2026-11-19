@@ -26,47 +26,55 @@ package/mtk/applications/mtwifi-cfg/  配置工具
 而 `Yuzhii0718@openwrt-24.10-6.6` 里 `package/kernel/mt76` 也不存在，
 **所以这套源码是纯闭源，没有开源 mt76 可选**——上游那两档 WIFI-YES/NO 在这里没有对应开关。
 
-## 512M 必须改两处（改错会砖）
+## 分区必须与 U-Boot layout 对齐（改错会砖）
 
-上游设备树是按小容量 NAND 写的，放到 512 MB 上要改**两处**，`patches/n60pro-512m-ubi-5065m.patch` 一起处理：
+这块板子刷了 **WildEdition U-Boot**（v2.13.0），Web 界面 `10.10.10.1` 可以在多套分区布局间切换。
+**固件 DTS 的 ubi 长度必须与 U-Boot 选中的那个 layout 一致**，否则两边对 flash 的理解不同。
 
-```
-# 1) NMBM 保留块数：64 → 256（必须与原厂一致）
--        mediatek,bmt-max-reserved-blocks = <64>;
-+        mediatek,bmt-max-reserved-blocks = <256>;
+实测 U-Boot 提供的布局（`/api/mtd_layouts`，闪存 Winbond W25N04KV / 512 MB / 4096 块 × 128 KB）：
 
-# 2) ubi 长度：120 MiB → 0x1DA80000（尾部留 32 MiB 给 NMBM）
--               reg = <0x0580000 0x7280000>;
-+               reg = <0x0580000 0x1DA80000>;
-```
-
-### ubi 长度是怎么算的
-
-```
-芯片 512 MiB                0x20000000
-ubi 起点                    0x580000
-NMBM 预留 256×128 KiB       0x2000000  (32 MiB)
-                                        ↓
-ubi = 0x20000000 - 0x580000 - 0x2000000 = 0x1DA80000
-校验：0x1DA80000 + 0x580000 = 0x1E000000，尾部正好剩 0x2000000 ✓
-```
-
-**为什么不能写 `size = <0x0>`（用满剩余）**：那是 Keenetic KN-3811 的写法，但它的树用的是
-`compatible = "linux,ubi"` 新绑定，尾部边界由内核自己算。这棵树**没有**该绑定，写 `0x0`
-会把 NMBM 的 BMT 表一起吃掉——BMT 放不下，NMBM 找不到签名，和 `reserved-blocks = <64>` 是同一种死法。
-
-三条基线的 ubi 长度差，正好是 NMBM 预留量：
-
-| 来源 | ubi 长度 | `linux,ubi` 绑定 |
+| layout | ubi | 尾部剩余 |
 |---|---|---|
-| 主线 openwrt main | `0x7a80000`（122.5 MiB） | 有 |
-| 6.6 padavanonly（本仓用） | `0x7280000`（114.5 MiB） | 无 |
-| OWRT 的 patch | `0x1fa80000`（506.5 MiB） | 有 |
+| `default` / `...-500MB-data-1m` | `0x580000+0x1F400000`（500 MiB） | 5.5 MiB + data 1 MiB |
+| **`spi-nand-512MB-ubi-490MB`** | **`0x580000+0x1EA00000`（490 MiB）** | **16.5 MiB** |
+| `spi-nand-512MB-ubi-460MB` | `0x580000+0x1CC00000`（460 MiB） | 46.5 MiB |
+| `spi-nand-512MB-MAX-506.5MB` | `0x580000+0x1FA80000`（506.5 MiB） | 0 |
+| `spi-nand-512MB-ubi-400MB-data-100m` | `0x580000+0x19000000`（400 MiB） | + data 100 MiB |
+| `spi-nand-512MB-ubi-114.5MB-data-385m` | `0x580000+0x07280000`（114.5 MiB） | + data 385 MiB |
 
-主线减 6.6 = `0x800000` = 8 MiB = 64 块 × 128 KiB，正是 `reserved-blocks = <64>` 的预留量。
+### 本仓采用：U-Boot 选 `ubi-490MB`，DTS 写 `0x1EA00000`
 
-**第一条为什么必须改**：见 OpenWrt PR #24001 —— 设备树设 64 而原厂固件用 256，
-NMBM 会在某些板子上找不到自己的签名，**刷完不开机**。这条不是优化，是启动前提。
+```
+U-Boot   spi-nand-512MB-ubi-490MB
+           ubi@0x580000 + 0x1EA00000
+
+DTS      reg = <0x0580000 0x1EA00000>;
+           bmt-max-reserved-blocks = <64>;   ← 保持原厂值
+```
+
+容量核对：
+
+```
+ubi 结束   0x580000 + 0x1EA00000 = 0x1EF80000
+芯片       0x20000000
+尾部剩余   0x1080000 = 16.5 MiB
+NMBM 需求  64 块 × 128 KiB = 8 MiB   → 够用
+```
+
+### 两个踩过的坑
+
+**1. `bmt-max-reserved-blocks` 不要改成 256。**
+OpenWrt PR #24001 把 Keenetic/Netcraze 的该值从 64 改成 256，那是因为**那些板子的原厂值就是 256**。
+Netcore（磊科）N60 Pro 不是同一家，U-Boot 各 layout 的尾部预留量与 64 块 × 128 KiB 对得上。
+盲目套用会让 NMBM 找不到签名，刷完不开机。
+
+**2. 不要写 `size = <0x0>`。**
+那是 Keenetic KN-3811 的写法，但它的树有 `compatible = "linux,ubi"` 新绑定，尾部边界由内核算。
+本仓用的 6.6 padavanonly 树没有该绑定（全树 `linux,ubi` 零命中），
+写 `0x0` 会把 NMBM 的 BMT 表一起吃掉。
+
+**3. 不要选 `MAX-506.5MB`**（除非改用 `linux,ubi` 绑定）。
+它把 ubi 顶到芯片末尾、尾部预留 0，BMT 无处可放。
 
 ## daede 支持（软件层同 OWRT）
 
