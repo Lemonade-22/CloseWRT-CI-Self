@@ -1,0 +1,90 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Lemonade-22
+#
+# 同步上游 VIKINGYFY/CloseWRT-CI 到本仓 main。
+#
+# 设计要点：只合上游的文件，本仓自己的东西（custom/、TR3000.yml、
+# WRT-CORE-SELF.yml、三个维护工作流）不参与合并，所以永远冲突不到自己头上。
+name: Sync upstream repositories
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 每小时 17 分看一眼上游；GitHub 调度可能有延迟。
+    - cron: '17 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+
+      - name: Sync VIKINGYFY CloseWRT-CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git remote add upstream https://github.com/VIKINGYFY/CloseWRT-CI.git
+          git fetch upstream main
+
+          # 上游 README 归上游：先无条件镜像过来
+          git restore --source=upstream/main -- README.md || true
+          if ! git diff --quiet -- README.md; then
+            git add README.md
+            git commit -m "chore: sync root README from upstream"
+          fi
+
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Already up to date with upstream/main."
+            exit 0
+          fi
+
+          # 我们的自用文件在合并时保持本地版本，避免上游同名文件把自用实现顶掉
+          OUR_FILES=(
+            ".github/workflows/WRT-CORE-SELF.yml"
+            ".github/workflows/TR3000.yml"
+            ".github/workflows/Delete-All-Workflow-Runs.yml"
+            ".github/workflows/sync-upstream.yml"
+            ".github/workflows/Auto-Clean-Self.yml"
+            "Scripts/Clean-Releases.cjs"
+            "Scripts/Delete-Workflow-Runs.cjs"
+          )
+          OUR_FILES+=($(git ls-files 'custom/**'))
+
+          for f in "${OUR_FILES[@]}"; do
+            [ -e "$f" ] && git update-index --skip-worktree "$f" 2>/dev/null || true
+          done
+
+          if ! git merge --no-edit upstream/main; then
+            echo "::error::Upstream merge conflict. 自用文件已尽量保护，剩余冲突需人工处理。"
+            git diff --name-only --diff-filter=U
+            git merge --abort
+            exit 1
+          fi
+
+          for f in "${OUR_FILES[@]}"; do
+            [ -e "$f" ] && git update-index --no-skip-worktree "$f" 2>/dev/null || true
+          done
+
+          if ! git push origin HEAD:main; then
+            echo "::error::Push failed. 检查并发写入、分支保护与 UPSTREAM_SYNC_TOKEN。"
+            exit 1
+          fi
+
+      - name: Sync completed
+        run: echo "Upstream synchronized at $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S %Z')"
