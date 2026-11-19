@@ -41,7 +41,7 @@ UPDATE_PACKAGE() {
 # UPDATE_PACKAGE "diskman" "sbwml/luci-app-diskman" "master"
 
 # 私有扩展
-if [ -f "$GITHUB_WORKSPACE/custom/tr3000/scripts/PRIVATE.sh" ]; then
+if [ -f "$GITHUB_WORKSPACE/custom/tr3000_hanwckf/scripts/PRIVATE.sh" ]; then
 	# shellcheck disable=SC1091
-	source "$GITHUB_WORKSPACE/custom/tr3000/scripts/PRIVATE.sh"
+	source "$GITHUB_WORKSPACE/custom/tr3000_hanwckf/scripts/PRIVATE.sh"
 fi

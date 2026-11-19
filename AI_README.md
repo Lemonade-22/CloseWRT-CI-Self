@@ -10,7 +10,7 @@ OpenWrt / ImmortalWrt 固件自动构建。**自维护机型**（上游不支持
 
 ```
 WRT-CORE.yml        通用构建核心（被 CWRT-ALL / WRT-TEST 调用）
-WRT-CORE-SELF.yml   自维护机型的构建核心（被 TR3000 调用）
+WRT-CORE-SELF.yml   自维护机型的构建核心（被 TR3000_hanwckf 调用）
 <机型>.yml           触发入口，只负责 matrix 定义 + 传参
 ```
 
@@ -24,10 +24,26 @@ custom/<机型>/
   patches/*.patch             DTS / target 补丁
   scripts/Packages.sh         第三方插件入口（默认留空框架）
   scripts/Settings.sh         主机名 / IP / WiFi / 主题落地
+  scripts/verify.sh           defconfig 之后的关键符号校验
   README.md                   硬件事实与数值出处
 ```
 
 再建一个 `<机型>.yml` 指向 `WRT-CORE-SELF.yml`。
+
+**还要在 `Scripts/Device.sh` 的 case 里加一支** —— 这是全流程唯一认机型的地方：
+
+```bash
+case "$CONFIG" in
+  TR3000-*_hanwckf) DEVICE="tr3000_hanwckf" ;;
+  <机型>-*)         DEVICE="<机型目录名>" ;;
+esac
+```
+
+构建核心不写任何机型名。它 eval `Device.sh resolve` 拿到 `DEVICE_DIR`，
+再去 `custom/<DEVICE_DIR>/` 取 Config、patches、scripts、verify.sh。
+
+**命名规范**：机型 workflow 和 `custom/` 目录都带源码基线后缀，如 `TR3000_hanwckf.yml`、
+`custom/tr3000_hanwckf/`。为将来同板不同基线（6.6 等）留区分位，别把后缀省掉。
 
 ## 硬性规则（踩过的坑）
 

@@ -1,19 +1,22 @@
 # SPDX-License-Identifier: MIT
 # Copyright (C) 2026 Lemonade-22
 #
-# WRT-CORE-SELF —— 本仓自用的构建核心，面向 hanwckf/immortalwrt-mt798x（openwrt-21.02 / Linux 5.4）。
+# WRT-CORE-SELF —— 本仓自用的完整构建核心，面向自维护机型
+# （当前：hanwckf/immortalwrt-mt798x 的 openwrt-21.02 / Linux 5.4，Cudy TR3000）。
 #
-# 为什么不复用上游 WRT-CORE.yml：
-#   上游那条是给 immortalwrt 25.x（Linux 6.6、defconfig/ 目录、feeds 走 25.12 分支）写的。
-#   这条线内核是 5.4、feeds 全部锁在 openwrt-21.02，包集合与初始化脚本都不一样，
-#   硬塞进去只会两边都不像。所以单独一份，上游 WRT-CORE.yml 一个字不动，随时能同步。
+# 设计原则：
+#   1. 这里不写任何机型名。机型判别交给 Scripts/Device.sh，
+#      由它把 WRT_CONFIG 映射到 custom/<机型>/ 目录。
+#   2. 机型的东西（Config、patches、scripts、verify）全在 custom/<机型>/ 下，
+#      新增机型只改 Device.sh 的一个 case 分支 + 建一个目录。
+#   3. 上游 WRT-CORE.yml 一个字不动，随时能同步。
 name: WRT-CORE-SELF
 
 on:
   workflow_call:
     inputs:
       WRT_CONFIG:
-        description: 'custom/ 下 Config 目录里的文件名（不含 .txt）'
+        description: '机型配置名，同时决定 custom/<机型>/ 的归属（见 Scripts/Device.sh）'
         required: true
         type: string
       WRT_THEME:
@@ -102,12 +105,34 @@ jobs:
           sudo chown $USER:$USER /mnt/build_wrt
           sudo ln -sfn /mnt/build_wrt $GITHUB_WORKSPACE/wrt
 
+      # ---- 机型判别：全流程唯一认机型的地方 ----
+      - name: Resolve Device
+        run: |
+          set -euo pipefail
+          eval "$(bash "$GITHUB_WORKSPACE/Scripts/Device.sh" resolve "$WRT_CONFIG")"
+          {
+            echo "DEVICE=$DEVICE"
+            echo "DEVICE_DIR=$DEVICE_DIR"
+          } >> "$GITHUB_ENV"
+          if [ -n "$DEVICE_DIR" ]; then
+            echo "自维护机型：$DEVICE（目录 $DEVICE_DIR）"
+          else
+            echo "通用机型：走 Config/ 与 Scripts/"
+          fi
+
       - name: Initialization Values
         id: initialize-values
         run: |
           set -euo pipefail
-          # 设备型号直接从 .config 里读，不靠文件名猜
-          WRT_DEVICE=$(grep -m 1 -oP '^CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_\K[^=]+(?==y)' "./custom/tr3000/Config/$WRT_CONFIG.txt")
+          # 设备型号从 .config 里读，不靠文件名猜
+          if [ -n "${DEVICE_DIR:-}" ]; then
+            CFG="$GITHUB_WORKSPACE/$DEVICE_DIR/Config/$WRT_CONFIG.txt"
+          else
+            CFG="$GITHUB_WORKSPACE/Config/$WRT_CONFIG.txt"
+          fi
+          [ -f "$CFG" ] || { echo "::error::找不到配置 $CFG"; exit 1; }
+          WRT_DEVICE=$(grep -m 1 -oP '^CONFIG_TARGET_DEVICE_[a-z0-9_]+_DEVICE_\K[^=]+(?==y)' "$CFG" || true)
+          [ -n "$WRT_DEVICE" ] || { echo "::error::$CFG 里没有 CONFIG_TARGET_DEVICE_*=y"; exit 1; }
           WRT_CACHE_SOURCE=${WRT_SOURCE//\//-}
           WRT_CACHE_BRANCH=${WRT_BRANCH//\//-}
           WRT_CACHE_PREFIX="wrt-self-$WRT_CACHE_SOURCE-$WRT_CACHE_BRANCH-$WRT_DEVICE"
@@ -134,20 +159,32 @@ jobs:
           echo "WRT_CACHE_KEY=$WRT_CACHE_PREFIX-$WRT_HASH" >> $GITHUB_ENV
           echo "cache_key=$WRT_CACHE_PREFIX-$WRT_HASH" >> "$GITHUB_OUTPUT"
 
+      - name: Check Scripts
+        run: |
+          find ./ -maxdepth 3 -type f -iregex ".*\(txt\|sh\)$" -exec dos2unix {} \; -exec chmod +x {} \;
+          bash "$GITHUB_WORKSPACE/Scripts/Device.sh" verify "$WRT_CONFIG"
+
       - name: Apply device patch
         run: |
           set -euo pipefail
           cd ./wrt/
-          PATCH="$GITHUB_WORKSPACE/custom/tr3000/patches/0001-add-cudy-tr3000.patch"
-          # 先 dry-run：上游一改，这里立刻红，而不是编到一半才报废
-          git apply --check "$PATCH"
-          git apply "$PATCH"
+          if [ -z "${DEVICE_DIR:-}" ]; then
+            echo "通用机型：无设备补丁"
+            exit 0
+          fi
+          shopt -s nullglob
+          PATCHES=("$GITHUB_WORKSPACE/$DEVICE_DIR"/patches/*.patch)
+          if [ ${#PATCHES[@]} -eq 0 ]; then
+            echo "该机型无补丁"
+            exit 0
+          fi
+          for PATCH in "${PATCHES[@]}"; do
+            echo "==> $(basename "$PATCH")"
+            # 先 dry-run：上游一改这里立刻红，而不是编到一半才报废
+            git apply --check "$PATCH"
+            git apply "$PATCH"
+          done
           git diff --stat
-
-          # 确认补丁真的落到了两处关键位置
-          test -f target/linux/mediatek/files-5.4/arch/arm64/boot/dts/mediatek/mt7981-cudy-tr3000-v1.dts
-          grep -q "cudy_tr3000-v1" target/linux/mediatek/image/mt7981.mk
-          grep -q "cudy,tr3000-v1" target/linux/mediatek/mt7981/base-files/etc/board.d/02_network
 
       - name: Restore Build Cache
         id: cache-restore
@@ -161,6 +198,16 @@ jobs:
             ./wrt/staging_dir/host*
             ./wrt/staging_dir/tool*
 
+      - name: Prepare Restored Build Cache
+        if: ${{ !inputs.WRT_TEST && steps.cache-restore.outputs.cache-matched-key != '' }}
+        run: |
+          find "./wrt/staging_dir" -type d -name "stamp" -not -path "*target*" | while read -r DIR; do
+            find "$DIR" -type f -exec touch {} +
+          done
+          mkdir -p ./wrt/tmp
+          echo "1" > ./wrt/tmp/.build
+          echo "restored build cache: ${{steps.cache-restore.outputs.cache-matched-key}}"
+
       - name: Update Feeds
         run: |
           set -euo pipefail
@@ -172,28 +219,53 @@ jobs:
         run: |
           set -euo pipefail
           cd ./wrt/
-          bash "$GITHUB_WORKSPACE/custom/tr3000/scripts/Packages.sh"
+          if [ -n "${DEVICE_DIR:-}" ] && [ -f "$GITHUB_WORKSPACE/$DEVICE_DIR/scripts/Packages.sh" ]; then
+            bash "$GITHUB_WORKSPACE/$DEVICE_DIR/scripts/Packages.sh"
+          elif [ -f "$GITHUB_WORKSPACE/Scripts/Packages.sh" ]; then
+            bash "$GITHUB_WORKSPACE/Scripts/Packages.sh"
+          fi
 
       - name: Custom Settings
         run: |
           set -euo pipefail
           cd ./wrt/
-          cp "$GITHUB_WORKSPACE/custom/tr3000/Config/$WRT_CONFIG.txt" .config
-          bash "$GITHUB_WORKSPACE/custom/tr3000/scripts/Settings.sh"
+          if [ -n "${DEVICE_DIR:-}" ]; then
+            CFG="$GITHUB_WORKSPACE/$DEVICE_DIR/Config/$WRT_CONFIG.txt"
+          else
+            CFG="$GITHUB_WORKSPACE/Config/$WRT_CONFIG.txt"
+          fi
+          [ -f "$CFG" ] || { echo "::error::找不到配置 $CFG"; exit 1; }
+          cp "$CFG" .config
+          if [ -f "$GITHUB_WORKSPACE/Config/GENERAL.txt" ]; then
+            cat "$GITHUB_WORKSPACE/Config/GENERAL.txt" >> .config
+          fi
+          if [ -n "${DEVICE_DIR:-}" ] && [ -f "$GITHUB_WORKSPACE/$DEVICE_DIR/scripts/Settings.sh" ]; then
+            bash "$GITHUB_WORKSPACE/$DEVICE_DIR/scripts/Settings.sh"
+          elif [ -f "$GITHUB_WORKSPACE/Scripts/Settings.sh" ]; then
+            bash "$GITHUB_WORKSPACE/Scripts/Settings.sh"
+          fi
           make defconfig
 
-          # 设备与加速栈必须真的在最终 .config 里，被 kconfig 丢掉要当场发现。
-          # 设备符号按当前配置推出来，不能写死：三份配置各对应一种闪存容量。
-          for s in \
-            "CONFIG_TARGET_DEVICE_mediatek_mt7981_DEVICE_${WRT_DEVICE}=y" \
-            "CONFIG_PACKAGE_kmod-mt_wifi=y" \
-            "CONFIG_PACKAGE_kmod-mediatek_hnat=y" \
-            "CONFIG_PACKAGE_luci-app-turboacc-mtk=y"; do
-            grep -qx "$s" .config || { echo "::error::config lost: $s"; exit 1; }
-          done
+          # 设备符号必须真的在最终 .config 里，被 kconfig 丢掉要当场发现
+          grep -qx "CONFIG_TARGET_DEVICE_[a-z0-9_]*_DEVICE_${WRT_DEVICE}=y" .config 2>/dev/null ||
+            grep -q "CONFIG_TARGET_DEVICE_.*${WRT_DEVICE}=y" .config ||
+            { echo "::error::设备符号丢失：${WRT_DEVICE}"; exit 1; }
+
+          # 机型自带的校验（关键包是否还在）
+          if [ -n "${DEVICE_DIR:-}" ] && [ -f "$GITHUB_WORKSPACE/$DEVICE_DIR/scripts/verify.sh" ]; then
+            bash "$GITHUB_WORKSPACE/$DEVICE_DIR/scripts/verify.sh"
+          fi
+
+      - name: Prepare Rust Toolchain
+        if: ${{ !inputs.WRT_TEST && hashFiles('.github/scripts/prepare-rust.sh') != '' }}
+        continue-on-error: true
+        run: |
+          cd ./wrt/
+          $GITHUB_WORKSPACE/.github/scripts/prepare-rust.sh || echo "跳过：21.02 线通常无需 Rust 工具链"
 
       - name: Download Packages
         if: ${{ !inputs.WRT_TEST }}
+        timeout-minutes: 60
         run: |
           cd ./wrt/
           make download -j$(nproc) || make download -j1 V=s
@@ -202,7 +274,29 @@ jobs:
         if: ${{ !inputs.WRT_TEST }}
         run: |
           cd ./wrt/
-          make -j$(nproc) || make -j1 V=s
+          mkdir -p $GITHUB_WORKSPACE/build-reports
+          make -j$(nproc) BUILD_TIME_LOG="$GITHUB_WORKSPACE/build-reports/parallel.tsv" || \
+            make -j1 V=s BUILD_TIME_LOG="$GITHUB_WORKSPACE/build-reports/serial.tsv"
+
+      - name: Collect Build Reports
+        if: ${{ !inputs.WRT_TEST && always() }}
+        continue-on-error: true
+        run: |
+          cd ./wrt/
+          if [ -x "$GITHUB_WORKSPACE/.github/scripts/collect-build-reports.sh" ]; then
+            $GITHUB_WORKSPACE/.github/scripts/collect-build-reports.sh
+          else
+            echo "无 collect-build-reports.sh，跳过"
+          fi
+
+      - name: Upload Build Reports
+        if: ${{ !inputs.WRT_TEST && always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-reports-${{env.WRT_CONFIG}}-${{env.WRT_INFO}}-${{github.run_attempt}}
+          path: ./build-reports/
+          retention-days: 7
 
       - name: Save Build Cache
         if: ${{ !inputs.WRT_TEST && success() && steps.cache-restore.outputs.cache-hit != 'true' }}
@@ -213,6 +307,16 @@ jobs:
             ./wrt/.ccache
             ./wrt/staging_dir/host*
             ./wrt/staging_dir/tool*
+
+      - name: Machine Information
+        run: |
+          cd ./wrt/
+          echo "======================="
+          lscpu | grep -E "name|Core|Thread" || true
+          echo "======================="
+          df -h
+          echo "======================="
+          du -h --max-depth=1 | head -20
 
       - name: Package Firmware
         run: |
@@ -238,17 +342,14 @@ jobs:
           tag_name: ${{env.WRT_CONFIG}}-${{env.WRT_INFO}}-${{env.WRT_BRANCH}}-${{env.WRT_DATE}}
           files: ./wrt/upload/*.*
           body: |
-            Cudy TR3000 v1 —— ImmortalWrt 21.02 / Linux 5.4（hanwckf 基线）
-
-            保留 MTK 闭源加速栈：kmod-mt_wifi（闭源 wifi）、kmod-mediatek_hnat（硬件 NAT）、
-            luci-app-turboacc-mt、mtkhqos_util。
+            自维护机型固件：${{env.WRT_CONFIG}}
 
             源码：${{env.WRT_REPO}}
             分支：${{env.WRT_BRANCH}}
             提交：${{env.WRT_HASH}}
 
-            配置：${{env.WRT_CONFIG}}
             设备：${{env.WRT_DEVICE}}
+            机型目录：${{env.DEVICE_DIR}}
 
             登录地址：${{env.WRT_IP}}
             登录密码：${{env.WRT_PW}}
@@ -258,6 +359,38 @@ jobs:
             内核版本：${{env.WRT_KVER}}
             插件列表：${{env.WRT_LIST}}
 
-            注意：TR3000 在 21.02 线上游并无官方支持，本构建带一份自维护的设备移植补丁
-            （custom/tr3000/patches/0001-add-cudy-tr3000.patch）。刷机前请先确认分区
-            与你的硬件一致。
+            设备适配与已知限制见仓库 custom/${{env.DEVICE}}/README.md，刷机前务必确认分区与硬件一致。
+
+  cache-rollover:
+    name: Roll cache generations
+    needs: core
+    if: ${{ !inputs.WRT_TEST && needs.core.result == 'success' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: wrt-self-cache-rollover-${{github.ref}}-${{needs.core.outputs.cache_prefix}}
+      cancel-in-progress: false
+    env:
+      GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      GH_REPO: ${{github.repository}}
+      WRT_CACHE_PREFIX: ${{needs.core.outputs.cache_prefix}}
+      WRT_CACHE_KEY: ${{needs.core.outputs.cache_key}}
+    steps:
+      - name: Roll Build Cache
+        run: |
+          set -euo pipefail
+          # 保留当前 key 与最近一代，其余删除，防止 cache 无限增长挤爆配额
+          KEYS=$(gh cache list --repo "$GH_REPO" --key "$WRT_CACHE_KEY" --ref "$GITHUB_REF" --limit 100 --json key --jq '.[].key' 2>/dev/null || true)
+          PREFIXED=$(gh cache list --repo "$GH_REPO" --limit 100 --json key --jq '.[].key' 2>/dev/null | grep -F "$WRT_CACHE_PREFIX-" || true)
+          echo "当前 key: $WRT_CACHE_KEY"
+          echo "前缀匹配: $(echo "$PREFIXED" | wc -l) 条"
+          KEEP=$(echo "$PREFIXED" | sort -r | head -2)
+          echo "$PREFIXED" | while IFS= read -r K; do
+            [ -n "$K" ] || continue
+            if echo "$KEEP" | grep -qxF "$K"; then
+              echo "保留 $K"
+            else
+              echo "删除 $K"
+              gh cache delete "$K" --repo "$GH_REPO" --ref "$GITHUB_REF" 2>/dev/null || true
+            fi
+          done
+

@@ -45,7 +45,7 @@ jobs:
         # FLASH 留空编全部三档；填了 128M/256M/512M 只编那一档。
         # 过滤必须写在 matrix 里：job 级 if 在矩阵展开前求值，引用 matrix.* 会让
         # 整个 workflow 解析失败（GitHub 报 Unrecognized named-value: 'matrix'）。
-        CONFIG: ${{ fromJSON(!inputs.FLASH && '["TR3000-128M","TR3000-256M","TR3000-512M"]' || format('["TR3000-{0}"]', inputs.FLASH)) }}
+        CONFIG: ${{ fromJSON(!inputs.FLASH && '["TR3000-128M_hanwckf","TR3000-256M_hanwckf","TR3000-512M_hanwckf"]' || format('["TR3000-{0}_hanwckf"]', inputs.FLASH)) }}
         REPO_INFO:
           # 21.02 / Linux 5.4 基线，带 MTK 闭源加速
           - {SOURCE: "hanwckf/immortalwrt-mt798x", BRANCH: "openwrt-21.02"}

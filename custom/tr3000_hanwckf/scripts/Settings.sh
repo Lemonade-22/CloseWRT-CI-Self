@@ -50,7 +50,7 @@ if [ -n "${WRT_PACKAGE:-}" ]; then
 	printf '%s\n' "${WRT_PACKAGE}" >> ./.config
 fi
 
-if [ -f "$GITHUB_WORKSPACE/custom/tr3000/Config/PRIVATE.txt" ]; then
+if [ -f "$GITHUB_WORKSPACE/custom/tr3000_hanwckf/Config/PRIVATE.txt" ]; then
 	say "合并 PRIVATE.txt"
-	cat "$GITHUB_WORKSPACE/custom/tr3000/Config/PRIVATE.txt" >> ./.config
+	cat "$GITHUB_WORKSPACE/custom/tr3000_hanwckf/Config/PRIVATE.txt" >> ./.config
 fi

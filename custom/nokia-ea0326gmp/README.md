@@ -16,7 +16,7 @@
 | OpenWrt 设备名 | `nokia_ea0326gmp` |
 | 上游支持 | openwrt/openwrt PR #14993 |
 
-**与 Cudy TR3000 同为 MT7981B 平台**，所以 `custom/tr3000/` 里的 DTS 写法、Config 结构、Settings.sh 的路径假设都可以参考。
+**与 Cudy TR3000 同为 MT7981B 平台**，所以 `custom/tr3000_hanwckf/` 里的 DTS 写法、Config 结构、Settings.sh 的路径假设都可以参考。
 
 ## 移植时按 tr3000 的结构填
 

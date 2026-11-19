@@ -3,7 +3,7 @@
 #
 # 同步上游 VIKINGYFY/CloseWRT-CI 到本仓 main。
 #
-# 设计要点：只合上游的文件，本仓自己的东西（custom/、TR3000.yml、
+# 设计要点：只合上游的文件，本仓自己的东西（custom/、TR3000_hanwckf.yml、
 # WRT-CORE-SELF.yml、三个维护工作流）不参与合并，所以永远冲突不到自己头上。
 name: Sync upstream repositories
 
@@ -57,7 +57,7 @@ jobs:
           # 我们的自用文件在合并时保持本地版本，避免上游同名文件把自用实现顶掉
           OUR_FILES=(
             ".github/workflows/WRT-CORE-SELF.yml"
-            ".github/workflows/TR3000.yml"
+            ".github/workflows/TR3000_hanwckf.yml"
             ".github/workflows/Delete-All-Workflow-Runs.yml"
             ".github/workflows/sync-upstream.yml"
             ".github/workflows/Auto-Clean-Self.yml"

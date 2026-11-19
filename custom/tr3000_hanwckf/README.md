@@ -36,7 +36,7 @@
 ## 文件
 
 ```
-custom/tr3000/
+custom/tr3000_hanwckf/
 ├── Config/
 │   ├── TR3000-128M.txt      完整 .config（由上游 mt7981-ax3000.config 改造）
 │   ├── TR3000-256M.txt
@@ -93,6 +93,6 @@ custom/tr3000/
 
 ## 想换到原生支持的 6.6 线
 
-`TR3000.yml` 的 matrix 里有两行，注释掉 hanwckf 那行、放开 padavanonly 那行即可。
+`TR3000_hanwckf.yml` 的 matrix 里有两行，注释掉 hanwckf 那行、放开 padavanonly 那行即可。
 但 6.6 线的设备名（`mediatek_filogic`）与 `.config` 内容都不同，需要另建一份
 `Config` 文件，不能直接复用现在的三份。
